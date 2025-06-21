@@ -11,19 +11,29 @@ import Photos
 
 class VLEPickerFetchAssetManager: NSObject {
 
-    class func fetchAlbums() -> VLEPickerAlbumListModel {
-        var model: VLEPickerAlbumListModel?
+    class func fetchAlbums() -> VLEPickerAlbumListModel? {
         let option = PHFetchOptions()
-        let smartAlbums = PHAssetCollection.fetchAssetCollections(with: PHAssetCollectionType.smartAlbum, subtype: PHAssetCollectionSubtype.albumRegular, options: nil)
-        smartAlbums.enumerateObjects { collection, _, stop in
-            if collection.assetCollectionSubtype == .smartAlbumUserLibrary {
-                let result = PHAsset.fetchAssets(in: collection, options: option)
-                let albumModel = VLEPickerAlbumListModel.init(title: collection.localizedTitle ?? "所有照片", result: result, collection: collection, option: option, isCameraRoll: true)
-                model = albumModel
-                stop.pointee = true
-            }
+
+        // Dùng subtype .smartAlbumUserLibrary trực tiếp
+        let smartAlbums = PHAssetCollection.fetchAssetCollections(
+            with: .smartAlbum,
+            subtype: .smartAlbumUserLibrary,
+            options: nil)
+
+        guard let collection = smartAlbums.firstObject else {
+            print("⚠️ Không tìm thấy smartAlbumUserLibrary trên iOS 18.5")
+            return nil
         }
-        return model!
+
+        let result = PHAsset.fetchAssets(in: collection, options: option)
+        let albumModel = VLEPickerAlbumListModel(
+            title: collection.localizedTitle ?? "所有照片",
+            result: result,
+            collection: collection,
+            option: option,
+            isCameraRoll: true)
+
+        return albumModel
     }
 
     class func fetchPhoto(in result: PHFetchResult<PHAsset>) -> [VLEPickerAssetModel] {

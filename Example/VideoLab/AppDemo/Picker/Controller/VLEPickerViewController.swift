@@ -267,7 +267,9 @@ extension VLEPickerViewController {
     }
     
     private func makeAlbumListModel() -> VLEPickerAlbumListModel {
-        let model = VLEPickerFetchAssetManager.fetchAlbums()
+        guard let model = VLEPickerFetchAssetManager.fetchAlbums() else {
+            fatalError("Không tìm thấy album Camera Roll. Đảm bảo quyền truy cập ảnh đã được cấp.")
+        }
         return model
     }
 }
