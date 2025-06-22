@@ -73,7 +73,7 @@ class VLEPlaybackControlView : UIView{
     }
     
     @objc func switchFullScreenButtonAction() {
-        HUD.show(.label("暂未开放"))
+        HUD.show(.label("Not yet available"))
         HUD.hide(afterDelay: 0.5)
     }
 }

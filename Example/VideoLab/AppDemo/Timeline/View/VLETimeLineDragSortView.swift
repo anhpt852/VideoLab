@@ -133,7 +133,7 @@ class VLETimeLineDragSortView: UIView {
         let label = UILabel.init()
         label.textColor = UIColor.init(hexString: "#FFFFFF")
         label.font = UIFont.boldSystemFont(ofSize: 14)
-        label.text = "放在此处，转换为独立的层"
+        label.text = "Drag here to convert to independent layer"
         return label
     }()
 

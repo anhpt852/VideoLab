@@ -188,12 +188,12 @@ class VLEPickerViewController: UIViewController {
         }
 
         bottomView.clickPreViewButtonBlock = {
-            HUD.show(.label("暂未开放"))
+            HUD.show(.label("Not yet available"))
             HUD.hide(afterDelay: 0.5)
         }
         albumSwitchView.clickLocalAlbumButtonBlock = {}
         albumSwitchView.clickOnlineMaterialButtonBlock = {
-            HUD.show(.label("暂未开放"))
+            HUD.show(.label("Not yet available"))
             HUD.hide(afterDelay: 0.5)
         }
     }
@@ -203,7 +203,7 @@ class VLEPickerViewController: UIViewController {
             self?.dismiss(animated: true)
         }
         navigatorView.clickSetButtonBlock = {
-            HUD.show(.label("暂未开放"))
+            HUD.show(.label("Not yet available"))
             HUD.hide(afterDelay: 0.5)
         }
     }

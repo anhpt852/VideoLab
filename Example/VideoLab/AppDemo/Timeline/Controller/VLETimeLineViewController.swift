@@ -106,12 +106,12 @@ class VLETimeLineViewController: UIViewController {
     }
 
     public func addAudioToSeparateRenderLayerWith(source: Source) {
-        HUD.show(.label("暂未开放"))
+        HUD.show(.label("Not yet available"))
         HUD.hide(afterDelay: 0.5)
     }
 
     public func addStickerToSeparateRenderLayerWith(source: Source) {
-        HUD.show(.label("暂未开放"))
+        HUD.show(.label("Not yet available"))
         HUD.hide(afterDelay: 0.5)
     }
     
@@ -446,7 +446,7 @@ extension VLETimeLineViewController: VLETimeLineToolBarViewDelegate {
                 }
             }
         } else {
-            HUD.show(.label("选择位置错误！"))
+            HUD.show(.label("Invalid position selected!"))
             HUD.hide(afterDelay: 0.5)
         }
     }
@@ -465,7 +465,7 @@ extension VLETimeLineViewController: VLETimeLineToolBarViewDelegate {
                 }
             }
         } else {
-            HUD.show(.label("选择位置错误！"))
+            HUD.show(.label("Invalid position selected!"))
             HUD.hide(afterDelay: 0.5)
         }
     }
@@ -653,7 +653,7 @@ extension VLETimeLineViewController {
         albumPermissions {
             VLEMainConcreteMediator.shared.addAssetWithPickerViewController()
         } denied: {
-            HUD.show(.label("允许打开相册才能保存和编辑视频，请在设置->APP名称->照片中打开权限"))
+            HUD.show(.label("Allow photo access to save and edit videos. Please go to Settings -> App Name -> Photos to enable permissions"))
             HUD.hide(afterDelay: 1)
         }
     }
@@ -662,7 +662,7 @@ extension VLETimeLineViewController {
         albumPermissions {
             VLEMainConcreteMediator.shared.addAssetWithPickerViewController()
         } denied: {
-            HUD.show(.label("允许打开相册才能保存和编辑视频，请在设置->APP名称->照片中打开权限"))
+            HUD.show(.label("Allow photo access to save and edit videos. Please go to Settings -> App Name -> Photos to enable permissions"))
             HUD.hide(afterDelay: 1)
         }
     }

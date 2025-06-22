@@ -256,9 +256,9 @@ class VLETimeLineSeparateRenderTrackView: UIView {
 
     @objc func summaryViewTapGestureAction(sender: UITapGestureRecognizer) {
         let controller = VLEMainConcreteMediator.shared.mainViewController
-        let alert = UIAlertController(title: nil, message: "是否删除当前图层？", preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "取消", style: .cancel))
-        alert.addAction(UIAlertAction(title: "确定", style: .default, handler: { _ in
+        let alert = UIAlertController(title: nil, message: "Delete current layer?", preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Confirm", style: .default, handler: { _ in
             self.delegate?.separateRenderTrackViewNeedRemove(self)
         }))
         controller!.present(alert, animated: true)

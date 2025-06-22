@@ -25,7 +25,7 @@ class VLEPlaybackViewController : UIViewController{
     
     lazy var hintLabel: UILabel = {
         let label = UILabel.init()
-        label.text = "轻点下面的+添加媒体"
+        label.text = "Tap the + below to add media"
         label.font = UIFont.boldSystemFont(ofSize: 18)
         label.textColor = UIColor.init(hexString: "#FFFFFF")
         return label
@@ -86,7 +86,7 @@ class VLEPlaybackViewController : UIViewController{
             playbackControlView.isHidden = true
             
             // ✅ UPDATE HINT TEXT
-            hintLabel.text = "轻点下面的+添加媒体"
+            hintLabel.text = "Tap the + below to add media"
             hintLabel.textColor = UIColor(hexString: "#FFFFFF")
         }
     }

@@ -389,7 +389,7 @@ swift
 guard let model = model else {
     // Fallback: Create default album model
     let allPhotosResult = PHAsset.fetchAssets(with: option)
-    return VLEPickerAlbumListModel(title: "所有照片", result: allPhotosResult, ...)
+    return VLEPickerAlbumListModel(title: "All Photos", result: allPhotosResult, ...)
 }
 Performance Considerations
 Thumbnail generation is async and cached

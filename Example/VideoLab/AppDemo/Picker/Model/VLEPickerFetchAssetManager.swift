@@ -27,7 +27,7 @@ class VLEPickerFetchAssetManager: NSObject {
 
         let result = PHAsset.fetchAssets(in: collection, options: option)
         let albumModel = VLEPickerAlbumListModel(
-            title: collection.localizedTitle ?? "所有照片",
+            title: collection.localizedTitle ?? "All Photos",
             result: result,
             collection: collection,
             option: option,
