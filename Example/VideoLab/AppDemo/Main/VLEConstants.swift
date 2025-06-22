@@ -13,4 +13,5 @@ class VLEConstants {
     static let VLETimeLineAssetDidIsNonemptyNotification = "VLETimeLineAssetIsNonemptyNotification"
     static let VLETImeLineShowDragSortViewNotification = "VLETImeLineShowDragSortViewNotification"
     static let VLETimeLineRemoveDragSortViewNotification = "VLETimeLineRemoveDragSortViewNotification"
+    static let VLETimeLineOverlayOnlyWarningNotification = "VLETimeLineOverlayOnlyWarningNotification"
 }

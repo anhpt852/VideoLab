@@ -12,6 +12,10 @@ import CoreMedia
 import PKHUD
 import Photos
 
+protocol VLETimeLineDragSortViewDelegateExtended: VLETimeLineDragSortViewDelegate {
+    func timelineDargSortViewChangedSeparate(with selectedIndex: Int, dragPositionXRate: Float, overlayPosition: CGPoint)
+}
+
 class VLETimeLineViewController: UIViewController {
     
     let stateModel = VLETimeLineStateModel.init()
@@ -30,12 +34,26 @@ class VLETimeLineViewController: UIViewController {
     override func viewDidLoad() {
         setupView()
         addObserverFormNotification()
+        // ✅ ADD DEBUG GESTURE (REMOVE IN PRODUCTION)
+           #if DEBUG
+           let shakeGesture = UITapGestureRecognizer(target: self, action: #selector(debugTapped))
+           shakeGesture.numberOfTapsRequired = 3
+           view.addGestureRecognizer(shakeGesture)
+           #endif
     }
 
+    #if DEBUG
+    @objc private func debugTapped() {
+        debugComposition()
+    }
+    #endif
+    
+    // ✅ MODIFY EXISTING addObserverFormNotification() method
     func addObserverFormNotification() {
-        let name1 = Notification.Name.init(rawValue: VLEConstants.VLETimeLineAssetDidIsEmptyNotification)
+        let name1 = Notification.Name(rawValue: VLEConstants.VLETimeLineAssetDidIsEmptyNotification)
         NotificationCenter.default.addObserver(self, selector: #selector(assetDidIsEmpty), name: name1, object: nil)
-        let name2 = Notification.Name.init(rawValue: VLEConstants.VLETimeLineAssetDidIsNonemptyNotification)
+        
+        let name2 = Notification.Name(rawValue: VLEConstants.VLETimeLineAssetDidIsNonemptyNotification)
         NotificationCenter.default.addObserver(self, selector: #selector(assetDidIsNonempty), name: name2, object: nil)
     }
 
@@ -96,20 +114,78 @@ class VLETimeLineViewController: UIViewController {
         HUD.show(.label("暂未开放"))
         HUD.hide(afterDelay: 0.5)
     }
+    
+    // ✅ ADD DEBUG METHODS
+    private func debugComposition() {
+        print("\n🔍 === TIMELINE DEBUG INFO ===")
+        
+        let validation = stateModel.validateComposition()
+        print("Composition valid: \(validation.isValid)")
+        if !validation.issues.isEmpty {
+            print("Issues found:")
+            for issue in validation.issues {
+                print("  ❌ \(issue)")
+            }
+        }
+        
+        print("\n📊 Main Track (\(stateModel.renderTrackItemModelArray.count) items):")
+        for (index, item) in stateModel.renderTrackItemModelArray.enumerated() {
+            let startTime = CMTimeGetSeconds(item.globalStartTime)
+            let duration = CMTimeGetSeconds(item.source.selectedTimeRange.duration)
+            print("  \(index): [\(String(format: "%.2f", startTime))s - \(String(format: "%.2f", startTime + duration))s] duration: \(String(format: "%.2f", duration))s")
+        }
+        
+        print("\n🎨 Overlay Track (\(stateModel.separateRenderTrackItemModelArray.count) items):")
+        for (index, item) in stateModel.separateRenderTrackItemModelArray.enumerated() {
+            let startTime = CMTimeGetSeconds(item.globalStartTime)
+            let duration = CMTimeGetSeconds(item.source.selectedTimeRange.duration)
+            let transform = item.renderLayer.transform
+            print("  \(index): [\(String(format: "%.2f", startTime))s - \(String(format: "%.2f", startTime + duration))s] transform: center=\(transform.center), scale=\(transform.scale)")
+        }
+        
+        print("\n⏱️ Total duration: \(String(format: "%.2f", stateModel.totalSeconds))s")
+        print("🎬 Render size: \(stateModel.renderSize)")
+        print("=== END DEBUG ===\n")
+    }
+    
 
+    // ✅ REPLACE EXISTING METHOD
     public func buildVideolab() -> VideoLab {
         var renderLayers: [RenderLayer] = []
-        for item in stateModel.renderTrackItemModelArray {
+        
+        print("🎬 === BUILDING VIDEOLAB COMPOSITION ===")
+        print("📊 Main track items: \(stateModel.renderTrackItemModelArray.count)")
+        print("📊 Overlay track items: \(stateModel.separateRenderTrackItemModelArray.count)")
+        
+        // ✅ VALIDATE MAIN TRACK
+        if stateModel.renderTrackItemModelArray.isEmpty && stateModel.separateRenderTrackItemModelArray.isEmpty {
+            print("❌ WARNING: No video content at all!")
+            // Return empty composition or show error
+        } else if stateModel.renderTrackItemModelArray.isEmpty && !stateModel.separateRenderTrackItemModelArray.isEmpty {
+            print("⚠️ WARNING: Only overlay content, no main video timeline!")
+            showMainTrackWarning()
+        }
+        
+        // Add main track layers
+        for (index, item) in stateModel.renderTrackItemModelArray.enumerated() {
+            print("✅ Main layer \(index): timeRange=\(item.renderLayer.timeRange)")
             renderLayers.append(item.renderLayer)
         }
-        for item in stateModel.separateRenderTrackItemModelArray {
+        
+        // Add overlay layers
+        for (index, item) in stateModel.separateRenderTrackItemModelArray.enumerated() {
+            print("✅ Overlay layer \(index): timeRange=\(item.renderLayer.timeRange), transform=\(item.renderLayer.transform)")
             renderLayers.append(item.renderLayer)
         }
+        
         let composition = RenderComposition()
         composition.renderSize = stateModel.renderSize
         composition.layers = renderLayers
-        return VideoLab.init(renderComposition: composition)
+        
+        print("✅ Final composition: \(renderLayers.count) total layers, renderSize: \(composition.renderSize)")
+        return VideoLab(renderComposition: composition)
     }
+
 
     public func updatePlaybackProgress(time: CMTime) {
         if backScrollView.isTracking || backScrollView.isDecelerating {
@@ -151,10 +227,13 @@ extension VLETimeLineViewController: UIScrollViewDelegate {
 
 extension VLETimeLineViewController: VLETimeLineDragSortViewDelegate {
 
+
     func timelineDargSortViewChangedSeparate(with selectedIndex: Int, dragPositionXRate: Float) {
         dragSortView?.removeFromSuperview()
         dragSortView = nil
         let startTime = stateModel.calculateSelectedTime(at: dragPositionXRate, sourceTime: stateModel.totalDuration)
+        
+        // ✅ SIMPLE CALL - No extra parameters
         stateModel.renderTrackItemModelConvertToSeparate(at: selectedIndex, startTime: startTime)
         stateModel.refreshItemTime()
         let separateTrackView = createSeparateRenderTrackView(with: stateModel.separateRenderTrackItemModelArray.last!)
@@ -162,7 +241,7 @@ extension VLETimeLineViewController: VLETimeLineDragSortViewDelegate {
         reloadView()
         VLEMainConcreteMediator.shared.previewTimeLineItem(videoLab: buildVideolab())
     }
-
+    
     func createSeparateRenderTrackView(with itemModel: VLETimeLineItemModel) -> VLETimeLineSeparateRenderTrackView {
         let separateTrackView = VLETimeLineSeparateRenderTrackView.init(with: itemModel, delegate: self)
         backScrollView.addSubview(separateTrackView)
@@ -455,15 +534,91 @@ extension VLETimeLineViewController {
         refreshViewState()
     }
 
+    // ✅ REPLACE EXISTING refreshViewState() - REMOVE hintLabel references
     func refreshViewState() {
-        scaleView.isHidden = !stateModel.isHaveRenderTrack
-        scaleView.isHidden = !stateModel.isHaveRenderTrack
-        toolBarView.isHidden = !stateModel.isHaveRenderTrack
-        addAssetButton.isHidden = stateModel.isHaveRenderTrack
-        backScrollView.isHidden = !stateModel.isHaveRenderTrack
-        renderTrackView.isHidden = !stateModel.isHaveRenderTrack
-        locationLineView.isHidden = !stateModel.isHaveRenderTrack
-        movablyAddAssetButton.isHidden = !stateModel.isHaveRenderTrack
+        let hasMainTrack = !stateModel.renderTrackItemModelArray.isEmpty
+        let hasOverlayTrack = !stateModel.separateRenderTrackItemModelArray.isEmpty
+        let hasAnyContent = stateModel.isHaveRenderTrack
+        
+        print("🎬 Refreshing view state - Main: \(hasMainTrack), Overlay: \(hasOverlayTrack)")
+        
+        if !hasAnyContent {
+            // Empty state
+            scaleView.isHidden = true
+            toolBarView.isHidden = true
+            addAssetButton.isHidden = false
+            backScrollView.isHidden = true
+            renderTrackView.isHidden = true
+            locationLineView.isHidden = true
+            movablyAddAssetButton.isHidden = true
+            
+            // ✅ NOTIFY PLAYBACK TO SHOW HINT
+            NotificationCenter.default.post(
+                name: Notification.Name(rawValue: VLEConstants.VLETimeLineAssetDidIsEmptyNotification),
+                object: nil
+            )
+            
+        } else if !hasMainTrack && hasOverlayTrack {
+            // ⚠️ Warning state: Only overlay content
+            scaleView.isHidden = false
+            toolBarView.isHidden = false
+            addAssetButton.isHidden = true
+            backScrollView.isHidden = false
+            renderTrackView.isHidden = false
+            locationLineView.isHidden = false
+            movablyAddAssetButton.isHidden = false
+            
+            // ✅ SHOW WARNING TO USER
+            showMainTrackWarning()
+            
+            // ✅ NOTIFY PLAYBACK
+            NotificationCenter.default.post(
+                name: Notification.Name(rawValue: VLEConstants.VLETimeLineAssetDidIsNonemptyNotification),
+                object: nil
+            )
+            
+        } else {
+            // ✅ Normal state
+            scaleView.isHidden = false
+            toolBarView.isHidden = false
+            addAssetButton.isHidden = true
+            backScrollView.isHidden = false
+            renderTrackView.isHidden = false
+            locationLineView.isHidden = false
+            movablyAddAssetButton.isHidden = false
+            
+            // ✅ NOTIFY PLAYBACK
+            NotificationCenter.default.post(
+                name: Notification.Name(rawValue: VLEConstants.VLETimeLineAssetDidIsNonemptyNotification),
+                object: nil
+            )
+        }
+        
+        // ✅ VISUAL FEEDBACK FOR OVERLAY TRACKS
+        for separateView in separateRenderTrackViewArray {
+            if hasMainTrack {
+                separateView.alpha = 1.0  // Full opacity when main track exists
+            } else {
+                separateView.alpha = 0.7  // Reduced opacity warning
+            }
+        }
+    }
+
+    // ✅ ADD WARNING METHOD
+    private func showMainTrackWarning() {
+        let alert = UIAlertController(
+            title: "Timeline Warning",
+            message: "You only have overlay videos. Add a main video to the timeline for best results.",
+            preferredStyle: .alert
+        )
+        
+        alert.addAction(UIAlertAction(title: "Add Main Video", style: .default) { _ in
+            VLEMainConcreteMediator.shared.addAssetWithPickerViewController()
+        })
+        
+        alert.addAction(UIAlertAction(title: "Continue Anyway", style: .cancel))
+        
+        self.present(alert, animated: true)
     }
 
     func reloadView() {

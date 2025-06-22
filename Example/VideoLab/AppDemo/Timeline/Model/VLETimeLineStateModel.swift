@@ -77,15 +77,78 @@ class VLETimeLineStateModel {
         return CGFloat.init(totalSeconds*VLETimeLineConfig.framesPerSecond) * VLETimeLineConfig.ptPerFrames
     }
     
+    // ✅ ADD PROPERTY TO STORE POSITION
+    private var pendingOverlayPosition: CGPoint?
+
+    // ✅ ADD METHOD TO SET PENDING POSITION
+    public func setPendingOverlayPosition(_ position: CGPoint) {
+        pendingOverlayPosition = position
+        print("🎯 Overlay position set: \(position)")
+    }
+    // ✅ ADD NEW COMPUTED PROPERTIES
+    var isValidComposition: Bool {
+        return !renderTrackItemModelArray.isEmpty || !separateRenderTrackItemModelArray.isEmpty
+    }
+
+    var hasMainTrackOnly: Bool {
+        return !renderTrackItemModelArray.isEmpty && separateRenderTrackItemModelArray.isEmpty
+    }
+
+    var hasOverlayOnly: Bool {
+        return renderTrackItemModelArray.isEmpty && !separateRenderTrackItemModelArray.isEmpty
+    }
+
+    var hasCompleteTimeline: Bool {
+        return !renderTrackItemModelArray.isEmpty && !separateRenderTrackItemModelArray.isEmpty
+    }
+
+    // ✅ ADD VALIDATION METHOD
+    func validateComposition() -> (isValid: Bool, issues: [String]) {
+        var issues: [String] = []
+        
+        if renderTrackItemModelArray.isEmpty && separateRenderTrackItemModelArray.isEmpty {
+            issues.append("No video content")
+        }
+        
+        if renderTrackItemModelArray.isEmpty && !separateRenderTrackItemModelArray.isEmpty {
+            issues.append("Only overlay content, missing main timeline")
+        }
+        
+        // Check for time overlaps in main track
+        for i in 1..<renderTrackItemModelArray.count {
+            let prev = renderTrackItemModelArray[i-1]
+            let current = renderTrackItemModelArray[i]
+            let prevEnd = CMTimeAdd(prev.globalStartTime, prev.source.selectedTimeRange.duration)
+            
+            if current.globalStartTime < prevEnd {
+                issues.append("Time overlap detected between segments \(i-1) and \(i)")
+            }
+        }
+        
+        return (issues.isEmpty, issues)
+    }
+    
+    // ✅ MODIFY EXISTING METHOD
     public func renderTrackItemModelConvertToSeparate(at selectIndex: Int, startTime: CMTime) {
         let selectedModel = renderTrackItemModelArray.remove(at: selectIndex)
         selectedModel.globalStartTime = startTime
         selectedModel.isSeparateRenderTrack = true
         selectedModel.renderLayer.timeRange.start = startTime
-        let randomX = CGFloat.random(in: 0.25...0.75)
-        let randomY = CGFloat.random(in: 0.25...0.75)
-        let center = CGPoint(x: randomX, y: randomY)
-        let transform = Transform(center: center, rotation: 0, scale: 0.5)
+        
+        // ✅ USE PENDING POSITION OR FALLBACK TO RANDOM
+        let center: CGPoint
+        if let overlayPosition = pendingOverlayPosition {
+            center = overlayPosition
+            pendingOverlayPosition = nil  // Clear after use
+            print("✅ Using selected overlay position: \(center)")
+        } else {
+            let randomX = CGFloat.random(in: 0.25...0.75)
+            let randomY = CGFloat.random(in: 0.25...0.75)
+            center = CGPoint(x: randomX, y: randomY)
+            print("🎲 Using random overlay position: \(center)")
+        }
+        
+        let transform = Transform(center: center, rotation: 0, scale: 0.3) // ✅ Smaller scale
         selectedModel.renderLayer.transform = transform
         separateRenderTrackItemModelArray.append(selectedModel)
     }

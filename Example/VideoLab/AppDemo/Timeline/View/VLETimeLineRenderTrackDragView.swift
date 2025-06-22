@@ -86,8 +86,10 @@ class VLETimeLineRenderTrackDragView: UIView {
     @objc func middleAreaViewTapGestureAction(sender: UITapGestureRecognizer) {
     }
 
+    // ✅ MODIFY EXISTING METHOD
     @objc func leftDragBlockViewGestureAction(sender: UIPanGestureRecognizer) {
         let point = sender.location(in: self.superview)
+        
         if sender.state == .began {
             panGestureOriginX = point.x
             targetViewW = targetView.bounds.width
@@ -95,20 +97,32 @@ class VLETimeLineRenderTrackDragView: UIView {
             originalSelectedDurtaion = targetView.model.source.selectedTimeRange.duration
             originalGlobalStartTime = targetView.model.globalStartTime
             originalSelectedStartTime = targetView.model.source.selectedTimeRange.start
+            
+            // ✅ LOG START STATE
+            print("🎬 Left drag started - Original duration: \(CMTimeGetSeconds(originalSelectedDurtaion))s")
         } else if sender.state == .changed {
             let offset = point.x - panGestureOriginX
-            if (offset + 10) > targetViewW {
+            
+            // ✅ BETTER EDGE DETECTION
+            let minWidth: CGFloat = 20  // Minimum segment width (adjustable)
+            if (offset + minWidth) > targetViewW {
+                print("⚠️ Drag blocked: would make segment too small")
                 return
             }
+            
             if offset >= 0 {
+                // Moving start forward
                 if targetView.model.recomputeSelectedDurationOf(originalDuration: originalSelectedDurtaion, offset: -offset) == false {
+                    print("❌ Left drag validation failed (forward)")
                     return
                 }
                 targetView.model.recomputeGlobalStartTimeOf(originalTime: originalGlobalStartTime, offset: offset)
                 targetView.model.recomputeSelectedStartTimeOf(originalTime: originalSelectedStartTime, offset: offset)
                 self.delegate?.renderTrackDragView(self, targetView: targetView, leftBorderDragWith: offset, finalWidth: targetViewW - offset)
             } else {
+                // Moving start backward
                 if targetView.model.recomputeSelectedDurationOf(originalDuration: originalSelectedDurtaion, offset: abs(offset)) == false {
+                    print("❌ Left drag validation failed (backward)")
                     return
                 }
                 targetView.model.recomputeGlobalStartTimeOf(originalTime: originalGlobalStartTime, offset: -abs(offset))
@@ -116,6 +130,7 @@ class VLETimeLineRenderTrackDragView: UIView {
                 self.delegate?.renderTrackDragView(self, targetView: targetView, leftBorderDragWith: offset, finalWidth: targetViewW + abs(offset))
             }
         } else if sender.state == .ended {
+            print("✅ Left drag completed")
             self.delegate?.renderTrackDragViewIsDragEnd()
         }
     }

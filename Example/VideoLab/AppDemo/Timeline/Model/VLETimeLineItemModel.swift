@@ -44,24 +44,43 @@ class VLETimeLineItemModel {
         }
     }
 
+    // ✅ REPLACE EXISTING METHOD
     func recomputeSelectedDurationOf(originalDuration: CMTime, offset: CGFloat) -> Bool {
         let offsetSecond = VLETimeLineConfig.convertToSecond(value: abs(offset))
         let offsetValue = offsetSecond * Float(originalDuration.timescale)
-        let offsetTime = CMTime.init(value: CMTimeValue.init(offsetValue), timescale: originalDuration.timescale)
-        var tmpTime = CMTime.zero
+        let offsetTime = CMTime(value: CMTimeValue(offsetValue), timescale: originalDuration.timescale)
+        
+        var newDuration: CMTime
         if offset < 0 {
-            tmpTime = CMTimeSubtract(originalDuration, offsetTime)
+            newDuration = CMTimeSubtract(originalDuration, offsetTime)
         } else {
-            tmpTime = CMTimeAdd(originalDuration, offsetTime)
+            newDuration = CMTimeAdd(originalDuration, offsetTime)
         }
-        if (tmpTime > self.source.duration) && (self.type != .image) {
+        
+        // ✅ IMPROVED VALIDATION
+        let minDuration = CMTime(seconds: 0.1, preferredTimescale: 600)  // Minimum 0.1 seconds
+        let maxDuration = self.source.duration  // Cannot exceed source duration
+        
+        // ✅ DETAILED LOGGING
+        if newDuration < minDuration {
+            print("❌ Duration too short: \(CMTimeGetSeconds(newDuration))s, minimum: \(CMTimeGetSeconds(minDuration))s")
             return false
         }
-        if tmpTime < CMTime.zero {
+        
+        if newDuration > maxDuration && self.type != .image {
+            print("❌ Duration too long: \(CMTimeGetSeconds(newDuration))s, maximum: \(CMTimeGetSeconds(maxDuration))s")
             return false
         }
-        self.source.selectedTimeRange.duration = tmpTime
-        self.renderLayer.timeRange.duration = tmpTime
+        
+        if newDuration < CMTime.zero {
+            print("❌ Negative duration: \(CMTimeGetSeconds(newDuration))s")
+            return false
+        }
+        
+        // ✅ SUCCESS
+        self.source.selectedTimeRange.duration = newDuration
+        self.renderLayer.timeRange.duration = newDuration
+        print("✅ Duration updated: \(CMTimeGetSeconds(newDuration))s")
         return true
     }
 

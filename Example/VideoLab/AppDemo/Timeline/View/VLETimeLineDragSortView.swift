@@ -26,6 +26,8 @@ class VLETimeLineDragSortView: UIView {
     var itemVerticalSpace: CGFloat = 35
     var itemWidth: CGFloat = 60
     var itemImageArray: [UIImage] = []
+    // ✅ ADD THIS PROPERTY
+    private var selectedOverlayPosition: CGPoint?
     var isSelectedHeaderView: Bool = false {
         didSet {
             if oldValue != isSelectedHeaderView {
@@ -205,17 +207,65 @@ extension VLETimeLineDragSortView {
         }
     }
 
+    // ✅ MODIFY EXISTING endSortView METHOD
     func endSortView(with sender: UILongPressGestureRecognizer) {
         dragSortGridView.endDragItemView(with: sender)
+        
         if isSelectedHeaderView == true {
-            let point = sender.location(in: dragSortGridView)
-            let rate = point.x/UIScreen.main.bounds.width
-            self.delegate?.timelineDargSortViewChangedSeparate(with: selectedIndex, dragPositionXRate: Float(rate))
+            // ✅ SHOW POSITION PICKER FIRST
+            showOverlayPositionOptions { [weak self] selectedPosition in
+                guard let self = self else { return }
+                
+                // ✅ STORE POSITION IN STATE MODEL BEFORE CALLING DELEGATE
+                if let delegate = self.delegate as? VLETimeLineViewController {
+                    delegate.stateModel.setPendingOverlayPosition(selectedPosition)
+                }
+                
+                let point = sender.location(in: self.dragSortGridView)
+                let rate = point.x / UIScreen.main.bounds.width
+                
+                // ✅ CALL ORIGINAL DELEGATE METHOD
+                self.delegate?.timelineDargSortViewChangedSeparate(with: self.selectedIndex, dragPositionXRate: Float(rate))
+            }
         } else if isSelectedFooterView == true {
             self.delegate?.timeLineDargSortViewDeleteSegment(with: selectedIndex)
         } else {
             self.delegate?.timeLineDargSortViewDidSort(with: selectedIndex, targetIndex: targetIndex)
         }
-        NotificationCenter.default.post(name: Notification.Name.init(rawValue: VLEConstants.VLETimeLineRemoveDragSortViewNotification), object: nil)
+        
+        NotificationCenter.default.post(name: Notification.Name(rawValue: VLEConstants.VLETimeLineRemoveDragSortViewNotification), object: nil)
     }
+    
+    // ✅ ADD THE POSITION PICKER METHOD
+    private func showOverlayPositionOptions(completion: @escaping (CGPoint) -> Void) {
+        let alert = UIAlertController(title: "Overlay Position", message: "Choose position", preferredStyle: .actionSheet)
+        
+        let positions = [
+            ("Top Left", CGPoint(x: 0.2, y: 0.2)),
+            ("Top Right", CGPoint(x: 0.8, y: 0.2)),
+            ("Bottom Left", CGPoint(x: 0.2, y: 0.8)),
+            ("Bottom Right", CGPoint(x: 0.8, y: 0.8)),
+            ("Center", CGPoint(x: 0.5, y: 0.5))
+        ]
+        
+        for (title, position) in positions {
+            alert.addAction(UIAlertAction(title: title, style: .default) { _ in
+                completion(position)
+            })
+        }
+        
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in
+            // ✅ FALLBACK TO RANDOM POSITION IF CANCELLED
+            let randomX = CGFloat.random(in: 0.25...0.75)
+            let randomY = CGFloat.random(in: 0.25...0.75)
+            completion(CGPoint(x: randomX, y: randomY))
+        })
+        
+        DispatchQueue.main.async {
+            if let viewController = self.findViewController() {
+                viewController.present(alert, animated: true)
+            }
+        }
+    }
+    
 }

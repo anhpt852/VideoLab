@@ -62,30 +62,55 @@ class VLEPlaybackViewController : UIViewController{
         addObserverFromNotification()
     }
 
+    // ✅ MODIFY EXISTING addObserverFromNotification() method
     func addObserverFromNotification() {
-        let name1 = Notification.Name.init(rawValue: VLEConstants.VLETimeLineAssetDidIsEmptyNotification)
-        let name2 = Notification.Name.init(rawValue: VLEConstants.VLETimeLineAssetDidIsNonemptyNotification)
+        let name1 = Notification.Name(rawValue: VLEConstants.VLETimeLineAssetDidIsEmptyNotification)
+        let name2 = Notification.Name(rawValue: VLEConstants.VLETimeLineAssetDidIsNonemptyNotification)
         NotificationCenter.default.addObserver(self, selector: #selector(assetDidIsEmpty), name: name1, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(assetDidIsNonempty), name: name2, object: nil)
+        
+        // ✅ ADD NEW OBSERVER
+        let name3 = Notification.Name(rawValue: VLEConstants.VLETimeLineOverlayOnlyWarningNotification)
+        NotificationCenter.default.addObserver(self, selector: #selector(showOverlayOnlyWarning), name: name3, object: nil)
     }
 
     deinit {
         NotificationCenter.default.removeObserver(self)
     }
 
+    // ✅ MODIFY EXISTING assetDidIsEmpty() method
     @objc func assetDidIsEmpty() {
         if hintLabel.isHidden == true {
             hintLabel.isHidden = false
             playbackView.isHidden = true
             playbackControlView.isHidden = true
+            
+            // ✅ UPDATE HINT TEXT
+            hintLabel.text = "轻点下面的+添加媒体"
+            hintLabel.textColor = UIColor(hexString: "#FFFFFF")
         }
     }
-    
+
+    // ✅ MODIFY EXISTING assetDidIsNonempty() method
     @objc func assetDidIsNonempty() {
         if hintLabel.isHidden == false {
             hintLabel.isHidden = true
             playbackView.isHidden = false
             playbackControlView.isHidden = false
+        }
+    }
+
+    // ✅ ADD NEW METHOD FOR OVERLAY WARNING
+    @objc func showOverlayOnlyWarning() {
+        if hintLabel.isHidden == true {
+            hintLabel.isHidden = false
+            hintLabel.text = "⚠️ 仅有浮层视频，建议添加主时间线视频"
+            hintLabel.textColor = UIColor(hexString: "#FFB84D")  // Orange warning
+            
+            // Auto hide after 3 seconds
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+                self.hintLabel.isHidden = true
+            }
         }
     }
 

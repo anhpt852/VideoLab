@@ -88,4 +88,26 @@ class VLEMainConcreteMediator: VLEMainMediator {
     func buildCurrentTimeLineItemToExport() -> VideoLab? {
         return self.timelineViewController?.buildVideolab()
     }
+    
+    // ✅ ADD DEBUG HELPER
+    #if DEBUG
+    func debugCurrentState() {
+        guard let timelineVC = timelineViewController else {
+            print("❌ No timeline controller")
+            return
+        }
+        
+        print("\n🔍 === MEDIATOR DEBUG ===")
+        print("Timeline loaded: \(timelineVC.isViewLoaded)")
+        print("Playback loaded: \(playbackViewController?.isViewLoaded ?? false)")
+        print("Effects loaded: \(effectViewController?.isViewLoaded ?? false)")
+        
+        if let videoLab = timelineVC.buildVideolab() {
+            let composition = videoLab.renderComposition
+            print("Composition layers: \(composition.layers.count)")
+            print("Render size: \(composition.renderSize)")
+        }
+        print("=== END MEDIATOR DEBUG ===\n")
+    }
+    #endif
 }

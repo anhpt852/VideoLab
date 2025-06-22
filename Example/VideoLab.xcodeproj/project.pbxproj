@@ -132,6 +132,7 @@
 		2EC4800A2452A39400D1D335 /* Main.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; path = Main.storyboard; sourceTree = "<group>"; };
 		2EC4800C2452A39400D1D335 /* image3.HEIC */ = {isa = PBXFileReference; lastKnownFileType = file; path = image3.HEIC; sourceTree = "<group>"; };
 		2EC4800D2452A39400D1D335 /* image1.JPG */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = image1.JPG; sourceTree = "<group>"; };
+		2ED610432E0757FF00BD327E /* Doc.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = Doc.md; sourceTree = "<group>"; };
 		49B85F52A9B716ED3D5F3BCD /* Pods-VideoLab_Tests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-VideoLab_Tests.release.xcconfig"; path = "Pods/Target Support Files/Pods-VideoLab_Tests/Pods-VideoLab_Tests.release.xcconfig"; sourceTree = "<group>"; };
 		4DCAC2D992EEEFE4BD969690 /* LICENSE */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text; name = LICENSE; path = ../LICENSE; sourceTree = "<group>"; };
 		5C12D39790091FABBA1E2A77 /* Pods_VideoLab_Tests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_VideoLab_Tests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -316,6 +317,7 @@
 		607FACC71AFB9204008FA782 = {
 			isa = PBXGroup;
 			children = (
+				2ED610432E0757FF00BD327E /* Doc.md */,
 				607FACF51AFB993E008FA782 /* Podspec Metadata */,
 				607FACD21AFB9204008FA782 /* Example for VideoLab */,
 				607FACE81AFB9204008FA782 /* Tests */,
