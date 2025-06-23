@@ -8,6 +8,7 @@
 
 import Foundation
 import UIKit
+import CoreMedia
 
 protocol VLETimeLineDragSortViewDelegate: NSObjectProtocol {
     func timelineDargSortViewChangedSeparate(with selectedIndex: Int, dragPositionXRate: Float)
@@ -26,6 +27,7 @@ class VLETimeLineDragSortView: UIView {
     var itemVerticalSpace: CGFloat = 35
     var itemWidth: CGFloat = 60
     var itemImageArray: [UIImage] = []
+    
     // ✅ ADD THIS PROPERTY
     private var selectedOverlayPosition: CGPoint?
     var isSelectedHeaderView: Bool = false {
@@ -57,6 +59,42 @@ class VLETimeLineDragSortView: UIView {
         }
     }
     
+    // ✅ ADD NEW PROPERTIES HERE
+    private var selectedOverlayTime: CMTime = CMTime.zero
+    private var mainTrackDuration: CMTime = CMTime.zero
+    
+    lazy var timelineSlider: UISlider = {
+        let slider = UISlider()
+        slider.minimumValue = 0
+        slider.maximumValue = 1
+        slider.value = 0.25  // Default to 25% position
+        slider.tintColor = UIColor.systemBlue
+        slider.thumbTintColor = UIColor.white
+        slider.addTarget(self, action: #selector(timelineSliderChanged(_:)), for: .valueChanged)
+        return slider
+    }()
+    
+    lazy var timelineLabel: UILabel = {
+        let label = UILabel()
+        label.font = UIFont.systemFont(ofSize: 13, weight: .medium)
+        label.textColor = UIColor.white
+        label.textAlignment = .center
+        label.text = "📍 Select overlay start time"
+        return label
+    }()
+    
+    lazy var timeValueLabel: UILabel = {
+        let label = UILabel()
+        label.font = UIFont.monospacedDigitSystemFont(ofSize: 18, weight: .bold)
+        label.textColor = UIColor.systemBlue
+        label.textAlignment = .center
+        label.text = "00:00"
+        label.layer.cornerRadius = 8
+        label.backgroundColor = UIColor.white.withAlphaComponent(0.1)
+        label.layer.masksToBounds = true
+        return label
+    }()
+    
     init(with itemArray: [UIImage], delegate: VLETimeLineDragSortViewDelegate, selectedIndex: Int) {
         self.selectedIndex = selectedIndex
         super.init(frame: CGRect.zero)
@@ -76,24 +114,57 @@ class VLETimeLineDragSortView: UIView {
         fatalError("")
     }
     
+    // ✅ REPLACE ENTIRE setupView() method:
     func setupView() {
         self.backgroundColor = UIColor.init(hexString: "#212123")
+        
+        // ✅ SETUP TIMELINE SLIDER FIRST
+        setupTimelineSlider()
+        
         scrollView.contentSize = CGSize.init(width: contentWidth, height: 350)
         self.addSubview(scrollView)
         scrollView.snp.makeConstraints { make in
             make.edges.equalToSuperview()
         }
+        
         scrollView.addSubview(headerView)
         headerView.snp.makeConstraints { make in
             make.width.equalTo(contentWidth)
-            make.height.equalTo(65)
+            make.height.equalTo(90)  // ✅ Increased height for slider
             make.left.top.equalToSuperview()
         }
+        
+        // ✅ ADD TIMELINE CONTROLS TO MAIN VIEW (not scrollView)
+        self.addSubview(timelineLabel)
+        timelineLabel.snp.makeConstraints { make in
+            make.centerX.equalToSuperview()
+            make.top.equalTo(scrollView.snp.top).offset(8)
+        }
+        
+        self.addSubview(timelineSlider)
+        timelineSlider.snp.makeConstraints { make in
+            make.left.equalToSuperview().offset(30)
+            make.right.equalToSuperview().offset(-30)
+            make.top.equalTo(timelineLabel.snp.bottom).offset(10)
+            make.height.equalTo(30)
+        }
+        
+        self.addSubview(timeValueLabel)
+        timeValueLabel.snp.makeConstraints { make in
+            make.centerX.equalToSuperview()
+            make.width.equalTo(80)
+            make.height.equalTo(30)
+            make.top.equalTo(timelineSlider.snp.bottom).offset(8)
+        }
+        
+        // ✅ MODIFY HEADER LABEL POSITION
         self.addSubview(headerLabel)
         headerLabel.snp.makeConstraints { make in
             make.centerX.equalToSuperview()
-            make.top.equalTo(scrollView.snp.top).offset(22)
+            make.top.equalTo(timeValueLabel.snp.bottom).offset(8)
         }
+        
+        // ... rest of existing setupView (stackView, footerView, etc.) remains the same ...
         scrollView.addSubview(stackView)
         stackView.snp.makeConstraints { make in
             make.left.equalToSuperview()
@@ -184,6 +255,51 @@ class VLETimeLineDragSortView: UIView {
         }
         return views
     }
+    
+    // ✅ ADD THESE NEW METHODS before extensions:
+
+    // MARK: - Timeline Slider Methods
+
+    func setupTimelineSlider() {
+        guard let timelineVC = self.delegate as? VLETimeLineViewController else {
+            print("❌ Cannot access timeline view controller for slider setup")
+            return
+        }
+        
+        mainTrackDuration = timelineVC.stateModel.calculateMainTrackDuration()
+        let maxSeconds = Float(CMTimeGetSeconds(mainTrackDuration))
+        
+        timelineSlider.maximumValue = maxSeconds
+        timelineSlider.value = maxSeconds * 0.25  // Default to 25% position
+        
+        selectedOverlayTime = CMTime(seconds: Double(timelineSlider.value), preferredTimescale: 600)
+        updateTimeLabel()
+        
+        print("🎛️ Timeline slider setup: 0-\(maxSeconds)s, default: \(timelineSlider.value)s")
+    }
+
+    @objc func timelineSliderChanged(_ slider: UISlider) {
+        selectedOverlayTime = CMTime(seconds: Double(slider.value), preferredTimescale: 600)
+        updateTimeLabel()
+        
+        // ✅ UPDATE CURSOR POSITION IN REAL-TIME
+        if let timelineVC = self.delegate as? VLETimeLineViewController {
+            timelineVC.updateCursorPosition(time: selectedOverlayTime)
+        }
+        
+        print("🎛️ Timeline slider: \(CMTimeGetSeconds(selectedOverlayTime))s")
+    }
+
+    func updateTimeLabel() {
+        let totalSeconds = Int(CMTimeGetSeconds(selectedOverlayTime))
+        let minutes = totalSeconds / 60
+        let seconds = totalSeconds % 60
+        timeValueLabel.text = String(format: "%02d:%02d", minutes, seconds)
+    }
+
+    func getSelectedOverlayTime() -> CMTime {
+        return selectedOverlayTime
+    }
 }
 
 extension VLETimeLineDragSortView {
@@ -192,40 +308,63 @@ extension VLETimeLineDragSortView {
         dragSortGridView.beginDragItemView(with: sender)
     }
 
+    // ✅ REPLACE EXISTING moveSortView() method:
     func moveSortView(with sender: UILongPressGestureRecognizer) {
         dragSortGridView.moveDragItemView(with: sender)
         let point = sender.location(in: dragSortGridView)
-        if (point.y < 0) && (point.y > -65) {
+        
+        if (point.y < 0) && (point.y > -90) {  // ✅ Increased area for slider
             isSelectedHeaderView = true
             isSelectedFooterView = false
+            
+            // ✅ SHOW CURSOR WHEN ENTERING OVERLAY AREA
+            if let timelineVC = self.delegate as? VLETimeLineViewController {
+                timelineVC.showOverlayCursor()
+                timelineVC.updateCursorPosition(time: selectedOverlayTime)
+            }
+            
         } else if (point.y > 150) && (point.y < 285) {
             isSelectedHeaderView = false
             isSelectedFooterView = true
+            
+            // ✅ HIDE CURSOR WHEN IN DELETE AREA
+            if let timelineVC = self.delegate as? VLETimeLineViewController {
+                timelineVC.hideOverlayCursor()
+            }
+            
         } else {
             isSelectedHeaderView = false
             isSelectedFooterView = false
+            
+            // ✅ HIDE CURSOR IN NORMAL AREA
+            if let timelineVC = self.delegate as? VLETimeLineViewController {
+                timelineVC.hideOverlayCursor()
+            }
         }
     }
 
-    // ✅ MODIFY EXISTING endSortView METHOD
+    // ✅ REPLACE EXISTING endSortView() method:
     func endSortView(with sender: UILongPressGestureRecognizer) {
         dragSortGridView.endDragItemView(with: sender)
         
+        if let timelineVC = self.delegate as? VLETimeLineViewController {
+            timelineVC.hideOverlayCursor()
+        }
+        
         if isSelectedHeaderView == true {
-            // ✅ SHOW POSITION PICKER FIRST
             showOverlayPositionOptions { [weak self] selectedPosition in
                 guard let self = self else { return }
                 
-                // ✅ STORE POSITION IN STATE MODEL BEFORE CALLING DELEGATE
-                if let delegate = self.delegate as? VLETimeLineViewController {
-                    delegate.stateModel.setPendingOverlayPosition(selectedPosition)
+                if let timelineVC = self.delegate as? VLETimeLineViewController {
+                    timelineVC.stateModel.setPendingOverlayPosition(selectedPosition)
+                    // ✅ USE SELECTED TIME FROM SLIDER
+                    timelineVC.stateModel.setPendingOverlayStartTime(self.selectedOverlayTime)
+                    
+                    print("🎯 Using slider time: \(CMTimeGetSeconds(self.selectedOverlayTime))s")
+                    print("🎯 Using position: \(selectedPosition)")
                 }
                 
-                let point = sender.location(in: self.dragSortGridView)
-                let rate = point.x / UIScreen.main.bounds.width
-                
-                // ✅ CALL ORIGINAL DELEGATE METHOD
-                self.delegate?.timelineDargSortViewChangedSeparate(with: self.selectedIndex, dragPositionXRate: Float(rate))
+                self.delegate?.timelineDargSortViewChangedSeparate(with: self.selectedIndex, dragPositionXRate: 0.0)
             }
         } else if isSelectedFooterView == true {
             self.delegate?.timeLineDargSortViewDeleteSegment(with: selectedIndex)

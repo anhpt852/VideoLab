@@ -11,6 +11,7 @@ import VideoLab
 import CoreMedia
 import PKHUD
 import Photos
+import SnapKit
 
 protocol VLETimeLineDragSortViewDelegateExtended: VLETimeLineDragSortViewDelegate {
     func timelineDargSortViewChangedSeparate(with selectedIndex: Int, dragPositionXRate: Float, overlayPosition: CGPoint)
@@ -30,6 +31,30 @@ class VLETimeLineViewController: UIViewController {
     lazy var renderTrackView = makeRenderTrackView()
     lazy var locationLineView = makeLocationLineView()
     lazy var movablyAddAssetButton = makeMovablyAddAssetButton()
+    // ✅ ADD CONSTRAINT REFERENCE
+    private var timelineCursorLeftConstraint: Constraint?
+    // ✅ ADD THESE PROPERTIES after existing lazy vars (around line 20)
+    lazy var timelineCursor: UIView = {
+        let cursor = UIView()
+        cursor.backgroundColor = UIColor.systemBlue
+        cursor.layer.cornerRadius = 2
+        cursor.layer.borderWidth = 1
+        cursor.layer.borderColor = UIColor.white.cgColor
+        cursor.isHidden = true
+        return cursor
+    }()
+
+    lazy var cursorTimeLabel: UILabel = {
+        let label = UILabel()
+        label.font = UIFont.systemFont(ofSize: 11, weight: .semibold)
+        label.textColor = UIColor.white
+        label.backgroundColor = UIColor.systemBlue
+        label.textAlignment = .center
+        label.layer.cornerRadius = 10
+        label.layer.masksToBounds = true
+        label.isHidden = true
+        return label
+    }()
     
     override func viewDidLoad() {
         setupView()
@@ -194,6 +219,39 @@ class VLETimeLineViewController: UIViewController {
         let second = CMTimeGetSeconds(time) * Float64(VLETimeLineConfig.framesPerSecond) * Float64(VLETimeLineConfig.ptPerFrames)
         backScrollView.setContentOffset(CGPoint.init(x: second, y: 0), animated: false)
     }
+    
+    // ✅ ADD THESE NEW METHODS before extensions:
+
+    // MARK: - Timeline Cursor Methods
+
+    // ✅ PROPER CONSTRAINT UPDATE METHOD:
+    func updateCursorPosition(time: CMTime) {
+        let timeString = formatTime(time)
+        cursorTimeLabel.text = timeString
+        
+        // ✅ CALCULATE TARGET POSITION
+        let timeSeconds = CMTimeGetSeconds(time)
+        let pixelPosition = VLETimeLineConfig.convertToPt(value: Float(timeSeconds))
+        let frontMargin = stateModel.fetchScaleFrontMargin()
+        let targetX = pixelPosition + frontMargin
+        
+        // ✅ UPDATE STORED CONSTRAINT
+        timelineCursorLeftConstraint?.update(offset: targetX)
+        
+        // ✅ ANIMATE THE CHANGE
+        UIView.animate(withDuration: 0.2, delay: 0, options: [.curveEaseOut]) {
+            self.view.layoutIfNeeded()
+        }
+        
+        print("🎯 Cursor moved to: \(CMTimeGetSeconds(time))s at \(targetX)px")
+    }
+
+    func formatTime(_ time: CMTime) -> String {
+        let totalSeconds = Int(CMTimeGetSeconds(time))
+        let minutes = totalSeconds / 60
+        let seconds = totalSeconds % 60
+        return String(format: "%02d:%02d", minutes, seconds)
+    }
 }
 
 extension VLETimeLineViewController: UIScrollViewDelegate {
@@ -226,34 +284,107 @@ extension VLETimeLineViewController: UIScrollViewDelegate {
 }
 
 extension VLETimeLineViewController: VLETimeLineDragSortViewDelegate {
+    func showOverlayCursor() {
+        // ✅ CURSOR WILL BE UPDATED BY SLIDER
+        timelineCursor.isHidden = false
+        cursorTimeLabel.isHidden = false
+        print("🎯 Overlay cursor shown")
+    }
+
+    // 2. Get precise timeline time
+    func getCurrentTimelineTime() -> CMTime {
+        let currentOffset = backScrollView.contentOffset.x
+        let frontMargin = stateModel.fetchScaleFrontMargin()
+        let adjustedOffset = max(0, currentOffset - frontMargin)
+        let timeSeconds = VLETimeLineConfig.convertToSecond(value: adjustedOffset)
+        return CMTime(seconds: Double(timeSeconds), preferredTimescale: 600)
+    }
 
 
+    // ✅ FIND EXISTING timelineDargSortViewChangedSeparate() method and REPLACE it:
     func timelineDargSortViewChangedSeparate(with selectedIndex: Int, dragPositionXRate: Float) {
+        print("🎯 === PRECISE OVERLAY POSITIONING WITH SLIDER ===")
+        
         dragSortView?.removeFromSuperview()
         dragSortView = nil
-        let startTime = stateModel.calculateSelectedTime(at: dragPositionXRate, sourceTime: stateModel.totalDuration)
         
-        // ✅ SIMPLE CALL - No extra parameters
-        stateModel.renderTrackItemModelConvertToSeparate(at: selectedIndex, startTime: startTime)
+        // ✅ USE PENDING TIME FROM SLIDER (handled in state model)
+        let targetTime = stateModel.getPendingOverlayStartTime() ?? CMTime.zero
+        let mainTrackDuration = stateModel.calculateMainTrackDuration()
+        let clampedTime = CMTimeMinimum(targetTime, mainTrackDuration)
+        
+        print("🎯 Slider selected time: \(CMTimeGetSeconds(targetTime))s")
+        print("🎯 Main track duration: \(CMTimeGetSeconds(mainTrackDuration))s")
+        print("🎯 Final overlay time: \(CMTimeGetSeconds(clampedTime))s")
+        
+        stateModel.renderTrackItemModelConvertToSeparate(at: selectedIndex, startTime: clampedTime)
         stateModel.refreshItemTime()
-        let separateTrackView = createSeparateRenderTrackView(with: stateModel.separateRenderTrackItemModelArray.last!)
-        separateRenderTrackViewArray.append(separateTrackView)
+        
+        if let lastItem = stateModel.separateRenderTrackItemModelArray.last {
+            let separateTrackView = createSeparateRenderTrackView(with: lastItem)
+            separateRenderTrackViewArray.append(separateTrackView)
+            print("✅ Overlay created at: \(CMTimeGetSeconds(lastItem.globalStartTime))s")
+            
+            // ✅ VISUAL FEEDBACK
+            highlightNewOverlay(separateTrackView)
+        }
+        
         reloadView()
         VLEMainConcreteMediator.shared.previewTimeLineItem(videoLab: buildVideolab())
+        hideOverlayCursor()
+        print("🎯 === END PRECISE POSITIONING ===")
+    }
+
+    // ✅ ADD VISUAL FEEDBACK METHOD
+    func highlightNewOverlay(_ overlayView: VLETimeLineSeparateRenderTrackView) {
+        // Flash animation to highlight new overlay
+        overlayView.transform = CGAffineTransform(scaleX: 1.2, y: 1.2)
+        overlayView.alpha = 0.7
+        
+        UIView.animate(withDuration: 0.6, delay: 0, usingSpringWithDamping: 0.6, initialSpringVelocity: 0.8) {
+            overlayView.transform = CGAffineTransform.identity
+            overlayView.alpha = 1.0
+        }
     }
     
     func createSeparateRenderTrackView(with itemModel: VLETimeLineItemModel) -> VLETimeLineSeparateRenderTrackView {
+        print("🔍 === CREATE SEPARATE VIEW DEBUG ===")
+        print("🔍 Global start time: \(CMTimeGetSeconds(itemModel.globalStartTime))s")
+        print("🔍 Duration: \(CMTimeGetSeconds(itemModel.source.selectedTimeRange.duration))s")
+        
         let separateTrackView = VLETimeLineSeparateRenderTrackView.init(with: itemModel, delegate: self)
+        
+        // ✅ ENSURE PROPER LAYER ORDER
         backScrollView.addSubview(separateTrackView)
+        backScrollView.bringSubviewToFront(separateTrackView)
+        
         let offset = VLETimeLineConfig.convertToPt(value: itemModel.globalStartTime)
         let width = VLETimeLineConfig.convertToPt(value: itemModel.source.selectedTimeRange.duration)
         let dragblockW = separateTrackView.dragBlockWidth
+        
+        let leftOffset = offset - dragblockW + stateModel.fetchScaleFrontMargin()
+        let totalWidth = width + dragblockW * 2
+        
+        print("🔍 UI calculations:")
+        print("🔍   - offset: \(offset)pt")
+        print("🔍   - width: \(width)pt")
+        print("🔍   - left offset: \(leftOffset)pt")
+        print("🔍   - total width: \(totalWidth)pt")
+        
         separateTrackView.snp.makeConstraints { make in
             make.top.equalTo(scaleView.snp.bottom).offset(0)
             make.height.equalTo(62)
-            make.left.equalTo(backScrollView.snp.left).offset(offset - dragblockW + stateModel.fetchScaleFrontMargin())
-            make.width.equalTo(width + dragblockW * 2)
+            make.left.equalTo(backScrollView.snp.left).offset(leftOffset)
+            make.width.equalTo(totalWidth)
         }
+        
+        // ✅ VISUAL DEBUGGING
+        separateTrackView.backgroundColor = UIColor.yellow.withAlphaComponent(0.3)
+        separateTrackView.layer.borderColor = UIColor.red.cgColor
+        separateTrackView.layer.borderWidth = 2
+        
+        print("✅ Separate track view created and positioned")
+        print("🔍 === END CREATE SEPARATE VIEW DEBUG ===")
         return separateTrackView
     }
 
@@ -277,6 +408,15 @@ extension VLETimeLineViewController: VLETimeLineDragSortViewDelegate {
         reloadView()
         VLEMainConcreteMediator.shared.previewTimeLineItem(videoLab: buildVideolab())
     }
+    
+    
+
+    func hideOverlayCursor() {
+        timelineCursor.isHidden = true
+        cursorTimeLabel.isHidden = true
+        print("🎯 Overlay cursor hidden")
+    }
+
 }
 
 extension VLETimeLineViewController: VLETimeLineRenderTrackViewDelegate {
@@ -512,11 +652,30 @@ extension VLETimeLineViewController {
             make.center.equalToSuperview()
         }
         self.view.addSubview(locationLineView)
+        self.view.addSubview(locationLineView)
         locationLineView.snp.makeConstraints { make in
             make.width.equalTo(2)
             make.centerX.equalToSuperview()
             make.top.equalTo(self.view.snp.top).offset(14)
             make.bottom.equalTo(toolBarView.snp.top).offset(0)
+        }
+        
+        // ✅ MODIFY CURSOR SETUP TO STORE CONSTRAINT
+        self.view.addSubview(timelineCursor)
+        timelineCursor.snp.makeConstraints { make in
+            make.width.equalTo(4)
+            make.top.equalTo(scaleView.snp.bottom)
+            make.bottom.equalTo(toolBarView.snp.top)
+            // ✅ STORE THE LEFT CONSTRAINT REFERENCE
+            self.timelineCursorLeftConstraint = make.left.equalTo(self.view.snp.centerX).constraint
+        }
+        
+        self.view.addSubview(cursorTimeLabel)
+        cursorTimeLabel.snp.makeConstraints { make in
+            make.width.equalTo(70)
+            make.height.equalTo(20)
+            make.centerX.equalTo(timelineCursor)
+            make.bottom.equalTo(timelineCursor.snp.top).offset(-5)
         }
         backScrollView.addSubview(renderTrackView)
         renderTrackView.snp.makeConstraints { make in

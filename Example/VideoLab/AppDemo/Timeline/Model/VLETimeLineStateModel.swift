@@ -18,6 +18,9 @@ class VLETimeLineStateModel {
     var totalDuration: CMTime = CMTime.zero
     var currentSelectedItemModel: VLETimeLineItemModel?
     var currentSelectedIndex: Int?
+    // ✅ ADD NEW PROPERTIES HERE
+   private var pendingOverlayPosition: CGPoint?
+   private var pendingOverlayStartTime: CMTime?
     var isHaveRenderTrack: Bool {
         if renderTrackItemModelArray.isEmpty && separateRenderTrackItemModelArray.isEmpty{
             return false
@@ -76,15 +79,7 @@ class VLETimeLineStateModel {
     private func calculateScaleWidth() -> CGFloat {
         return CGFloat.init(totalSeconds*VLETimeLineConfig.framesPerSecond) * VLETimeLineConfig.ptPerFrames
     }
-    
-    // ✅ ADD PROPERTY TO STORE POSITION
-    private var pendingOverlayPosition: CGPoint?
 
-    // ✅ ADD METHOD TO SET PENDING POSITION
-    public func setPendingOverlayPosition(_ position: CGPoint) {
-        pendingOverlayPosition = position
-        print("🎯 Overlay position set: \(position)")
-    }
     // ✅ ADD NEW COMPUTED PROPERTIES
     var isValidComposition: Bool {
         return !renderTrackItemModelArray.isEmpty || !separateRenderTrackItemModelArray.isEmpty
@@ -128,12 +123,34 @@ class VLETimeLineStateModel {
         return (issues.isEmpty, issues)
     }
     
-    // ✅ MODIFY EXISTING METHOD
+    // ✅ FIND EXISTING renderTrackItemModelConvertToSeparate() method and REPLACE it:
     public func renderTrackItemModelConvertToSeparate(at selectIndex: Int, startTime: CMTime) {
+        print("🔍 === CONVERT TO SEPARATE DEBUG ===")
+        print("🔍 Index to convert: \(selectIndex)")
+        print("🔍 Main track count before: \(renderTrackItemModelArray.count)")
+        
+        guard selectIndex < renderTrackItemModelArray.count else {
+            print("❌ INVALID INDEX: \(selectIndex) >= \(renderTrackItemModelArray.count)")
+            return
+        }
+        
         let selectedModel = renderTrackItemModelArray.remove(at: selectIndex)
-        selectedModel.globalStartTime = startTime
+        print("✅ Removed item from main track")
+        
+        // ✅ USE PENDING TIME IF AVAILABLE, OTHERWISE USE PROVIDED TIME
+        let finalStartTime: CMTime
+        if let pendingTime = pendingOverlayStartTime {
+            finalStartTime = pendingTime
+            pendingOverlayStartTime = nil  // Clear after use
+            print("🕐 Using pending slider time: \(CMTimeGetSeconds(finalStartTime))s")
+        } else {
+            finalStartTime = startTime
+            print("🕐 Using provided start time: \(CMTimeGetSeconds(finalStartTime))s")
+        }
+        
+        selectedModel.globalStartTime = finalStartTime
         selectedModel.isSeparateRenderTrack = true
-        selectedModel.renderLayer.timeRange.start = startTime
+        selectedModel.renderLayer.timeRange.start = finalStartTime
         
         // ✅ USE PENDING POSITION OR FALLBACK TO RANDOM
         let center: CGPoint
@@ -148,9 +165,12 @@ class VLETimeLineStateModel {
             print("🎲 Using random overlay position: \(center)")
         }
         
-        let transform = Transform(center: center, rotation: 0, scale: 0.3) // ✅ Smaller scale
+        let transform = Transform(center: center, rotation: 0, scale: 0.3)
         selectedModel.renderLayer.transform = transform
         separateRenderTrackItemModelArray.append(selectedModel)
+        
+        print("✅ Added to separate track. New count: \(separateRenderTrackItemModelArray.count)")
+        print("🔍 === END CONVERT DEBUG ===")
     }
     
     public func clipSeparateRenderTrackItemModelAtCurrentIndex(clipRate rate: Float, completion: @escaping (NSError?, VLETimeLineItemModel?) -> Void) {
@@ -225,5 +245,37 @@ class VLETimeLineStateModel {
     public func swapItemForRenderTrack(selectedIndex: Int, targetIndex: Int) {
         let selectedModel = renderTrackItemModelArray.remove(at: selectedIndex)
         renderTrackItemModelArray.insert(selectedModel, at: targetIndex)
+    }
+    
+    // ✅ ADD THESE NEW METHODS:
+
+    // MARK: - Pending Overlay State
+
+    public func setPendingOverlayPosition(_ position: CGPoint) {
+        pendingOverlayPosition = position
+        print("🎯 Pending overlay position set: \(position)")
+    }
+
+    public func setPendingOverlayStartTime(_ time: CMTime) {
+        pendingOverlayStartTime = time
+        print("🕐 Pending overlay start time set: \(CMTimeGetSeconds(time))s")
+    }
+
+    public func getPendingOverlayStartTime() -> CMTime? {
+        return pendingOverlayStartTime
+    }
+
+    func calculateMainTrackDuration() -> CMTime {
+        guard !renderTrackItemModelArray.isEmpty else {
+            return CMTime(seconds: 10, preferredTimescale: 600)  // 10 second minimum for empty timeline
+        }
+        
+        var totalDuration = CMTime.zero
+        for item in renderTrackItemModelArray {
+            totalDuration = CMTimeAdd(totalDuration, item.source.selectedTimeRange.duration)
+        }
+        
+        print("🔍 Main track duration calculated: \(CMTimeGetSeconds(totalDuration))s")
+        return totalDuration
     }
 }
