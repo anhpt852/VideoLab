@@ -18,6 +18,8 @@ class VLETimeLineStateModel {
     var totalDuration: CMTime = CMTime.zero
     var currentSelectedItemModel: VLETimeLineItemModel?
     var currentSelectedIndex: Int?
+    
+    private var pendingOverlayScale: Float?
     // ✅ ADD NEW PROPERTIES HERE
    private var pendingOverlayPosition: CGPoint?
    private var pendingOverlayStartTime: CMTime?
@@ -58,6 +60,15 @@ class VLETimeLineStateModel {
     }
     init() {
         self.renderSize = CGSize.init(width: 1280, height: 720)
+    }
+    
+    public func setPendingOverlayScale(_ scale: Float) {
+        pendingOverlayScale = scale
+        print("🎯 Pending overlay scale set: \(scale)")
+    }
+    
+    public func getPendingOverlayScale() -> Float? {
+        return pendingOverlayScale
     }
 
     public func fetchScaleSpaceWidth() -> CGFloat {
@@ -123,54 +134,144 @@ class VLETimeLineStateModel {
         return (issues.isEmpty, issues)
     }
     
-    // ✅ FIND EXISTING renderTrackItemModelConvertToSeparate() method and REPLACE it:
+    // ✅ FINAL WORKING VERSION - no private access needed:
     public func renderTrackItemModelConvertToSeparate(at selectIndex: Int, startTime: CMTime) {
-        print("🔍 === CONVERT TO SEPARATE DEBUG ===")
-        print("🔍 Index to convert: \(selectIndex)")
-        print("🔍 Main track count before: \(renderTrackItemModelArray.count)")
+        print("🔍 === SEPARATE OPERATION DEBUG ===")
+        print("🔍 Before separate - Main track count: \(renderTrackItemModelArray.count)")
+        print("🔍 Separating index: \(selectIndex)")
         
         guard selectIndex < renderTrackItemModelArray.count else {
-            print("❌ INVALID INDEX: \(selectIndex) >= \(renderTrackItemModelArray.count)")
+            print("❌ Invalid index for separation")
             return
         }
         
+        // ✅ Store main track duration BEFORE separation
+        let originalMainDuration = calculateMainTrackDuration()
+        print("🔍 Original main duration: \(CMTimeGetSeconds(originalMainDuration))s")
+        
+        // ✅ Get item to separate
         let selectedModel = renderTrackItemModelArray.remove(at: selectIndex)
         print("✅ Removed item from main track")
         
-        // ✅ USE PENDING TIME IF AVAILABLE, OTHERWISE USE PROVIDED TIME
-        let finalStartTime: CMTime
+        // ✅ CRITICAL: Immediately refresh main track to close gaps
+        refreshItemTime()
+        print("✅ Main track compacted after removal")
+        
+        // ✅ Calculate overlay timing
+        let requestedTime: CMTime
         if let pendingTime = pendingOverlayStartTime {
-            finalStartTime = pendingTime
-            pendingOverlayStartTime = nil  // Clear after use
-            print("🕐 Using pending slider time: \(CMTimeGetSeconds(finalStartTime))s")
+            requestedTime = pendingTime
+            pendingOverlayStartTime = nil
+            print("🕐 Using user-selected time: \(CMTimeGetSeconds(requestedTime))s")
         } else {
-            finalStartTime = startTime
-            print("🕐 Using provided start time: \(CMTimeGetSeconds(finalStartTime))s")
+            requestedTime = startTime
+            print("🕐 Using provided time: \(CMTimeGetSeconds(requestedTime))s")
         }
         
+        // ✅ Validate timing
+        let requestedSeconds = CMTimeGetSeconds(requestedTime)
+        let overlayDurationSeconds = CMTimeGetSeconds(selectedModel.source.selectedTimeRange.duration)
+        let originalMainSeconds = CMTimeGetSeconds(originalMainDuration)
+        
+        var finalStartTime: CMTime
+        
+        if requestedSeconds >= originalMainSeconds {
+            finalStartTime = CMTime(seconds: max(0, originalMainSeconds - overlayDurationSeconds), preferredTimescale: 600)
+            print("⚠️ Overlay time outside original timeline, corrected to: \(CMTimeGetSeconds(finalStartTime))s")
+        } else if (requestedSeconds + overlayDurationSeconds) > originalMainSeconds {
+            finalStartTime = CMTime(seconds: originalMainSeconds - overlayDurationSeconds, preferredTimescale: 600)
+            print("⚠️ Overlay extends beyond original timeline, corrected to: \(CMTimeGetSeconds(finalStartTime))s")
+        } else {
+            finalStartTime = requestedTime
+            print("✅ Overlay timing valid: \(CMTimeGetSeconds(finalStartTime))s")
+        }
+        
+        // ✅ Configure overlay item
         selectedModel.globalStartTime = finalStartTime
         selectedModel.isSeparateRenderTrack = true
-        selectedModel.renderLayer.timeRange.start = finalStartTime
+        selectedModel.renderLayer.timeRange = CMTimeRange(start: finalStartTime, duration: selectedModel.source.selectedTimeRange.duration)
         
-        // ✅ USE PENDING POSITION OR FALLBACK TO RANDOM
+        // ✅ Position setup
         let center: CGPoint
         if let overlayPosition = pendingOverlayPosition {
             center = overlayPosition
-            pendingOverlayPosition = nil  // Clear after use
-            print("✅ Using selected overlay position: \(center)")
+            pendingOverlayPosition = nil
+            print("✅ Using selected position: \(center)")
         } else {
             let randomX = CGFloat.random(in: 0.25...0.75)
             let randomY = CGFloat.random(in: 0.25...0.75)
             center = CGPoint(x: randomX, y: randomY)
-            print("🎲 Using random overlay position: \(center)")
+            print("🎲 Using random position: \(center)")
         }
         
-        let transform = Transform(center: center, rotation: 0, scale: 0.3)
+        // ✅ FIXED: Simple scale calculation without private properties
+        let overlayScale = getOverlayScale()
+        let transform = Transform(center: center, rotation: 0, scale: overlayScale)
         selectedModel.renderLayer.transform = transform
+        
         separateRenderTrackItemModelArray.append(selectedModel)
         
-        print("✅ Added to separate track. New count: \(separateRenderTrackItemModelArray.count)")
-        print("🔍 === END CONVERT DEBUG ===")
+        // ✅ Final refresh
+        refreshItemTime()
+        
+        print("✅ Separate operation completed")
+        print("📊 Final state - Main: \(renderTrackItemModelArray.count), Overlay: \(separateRenderTrackItemModelArray.count)")
+        print("📊 New total duration: \(totalSeconds)s")
+        print("🔍 === END SEPARATE DEBUG ===")
+    }
+
+    // ✅ SIMPLE helper method:
+    private func getOverlayScale() -> Float {
+        // ✅ Use pending scale if available
+        if let pendingScale = pendingOverlayScale {
+            pendingOverlayScale = nil
+            print("🎯 Using user-selected scale: \(pendingScale)")
+            return pendingScale
+        }
+        
+        // ✅ Default to larger scale for better visibility
+        return 0.35  // 35% - larger than before to show full frame
+    }
+    
+    // ✅ REPLACE calculateOptimalOverlayScale method trong VLETimeLineStateModel.swift:
+    private func calculateOptimalOverlayScale(for itemModel: VLETimeLineItemModel) -> Float {
+        // ✅ Use pending scale if available
+        if let pendingScale = pendingOverlayScale {
+            pendingOverlayScale = nil  // Clear after use
+            print("🎯 Using user-selected scale: \(pendingScale)")
+            return pendingScale
+        }
+        
+        // ✅ FIX: Use source duration and type instead of private asset
+        let sourceDuration = CMTimeGetSeconds(itemModel.source.duration)
+        let itemType = itemModel.type
+        
+        print("🎯 Calculating scale for type: \(itemType), duration: \(sourceDuration)s")
+        
+        // ✅ Scale based on content type and duration
+        var optimalScale: Float
+        
+        switch itemType {
+        case .video:
+            // ✅ Video content - use medium scale
+            if sourceDuration > 30 {
+                optimalScale = 0.25  // Longer videos - smaller overlay
+            } else {
+                optimalScale = 0.35  // Shorter videos - larger overlay
+            }
+            
+        case .image:
+            // ✅ Image content - can be larger
+            optimalScale = 0.4
+            
+        default:
+            // ✅ Other content
+            optimalScale = 0.3
+        }
+        
+        print("🎯 Calculated optimal scale: \(optimalScale)")
+        
+        return optimalScale
     }
     
     public func clipSeparateRenderTrackItemModelAtCurrentIndex(clipRate rate: Float, completion: @escaping (NSError?, VLETimeLineItemModel?) -> Void) {
@@ -203,26 +304,75 @@ class VLETimeLineStateModel {
         return CMTime.init(value: value, timescale: timescale)
     }
 
-    public func clipRenderTrackItemModelAtCurrentIndex(clipRate rate: Float, completion: @escaping (NSError?) -> Void){
+    // ✅ REPLACE method trong VLETimeLineStateModel.swift:
+    public func clipRenderTrackItemModelAtCurrentIndex(clipRate rate: Float, completion: @escaping (NSError?) -> Void) {
         guard let itemModel = currentSelectedItemModel else {
+            print("❌ No current selected item for clipping")
+            completion(NSError())
             return
         }
+        
+        print("✂️ === CLIP OPERATION DEBUG ===")
+        print("✂️ Clip rate: \(rate)")
+        print("✂️ Original duration: \(CMTimeGetSeconds(itemModel.source.selectedTimeRange.duration))s")
+        
         let selectedDuration = calculateSelectedTime(at: Float(rate), sourceTime: itemModel.source.selectedTimeRange.duration)
+        let remainingDuration = CMTimeSubtract(itemModel.source.selectedTimeRange.duration, selectedDuration)
+        
+        print("✂️ Selected duration: \(CMTimeGetSeconds(selectedDuration))s")
+        print("✂️ Remaining duration: \(CMTimeGetSeconds(remainingDuration))s")
+        
         let newItemModel = VLETimeLineItemModel.init(with: itemModel.source, type: itemModel.type)
         newItemModel.isSeparateRenderTrack = false
         newItemModel.source = itemModel.source.copy()
-        newItemModel.source.load { error in
+        
+        newItemModel.source.load { [weak self] error in
+            guard let self = self else { return }
+            
             if error == nil {
+                // ✅ Setup new item (right part)
                 newItemModel.globalStartTime = CMTimeAdd(itemModel.globalStartTime, selectedDuration)
                 newItemModel.source.selectedTimeRange.start = CMTimeAdd(itemModel.source.selectedTimeRange.start, selectedDuration)
-                newItemModel.source.selectedTimeRange.duration = CMTimeSubtract(itemModel.source.selectedTimeRange.duration, selectedDuration)
-                newItemModel.renderLayer.timeRange = CMTimeRange.init(start: newItemModel.globalStartTime, duration: newItemModel.source.selectedTimeRange.duration)
+                newItemModel.source.selectedTimeRange.duration = remainingDuration
+                newItemModel.renderLayer.timeRange = CMTimeRange(start: newItemModel.globalStartTime, duration: remainingDuration)
+                
+                // ✅ Update original item (left part)
                 itemModel.source.selectedTimeRange.duration = selectedDuration
-                newItemModel.generateThumbnails(with: 1) { _ in}
-                self.renderTrackItemModelArray.insert(newItemModel, at: self.currentSelectedIndex!+1)
-                completion(nil)
+                itemModel.renderLayer.timeRange.duration = selectedDuration
+                
+                print("✅ Original item updated: duration=\(CMTimeGetSeconds(selectedDuration))s")
+                print("✅ New item created: start=\(CMTimeGetSeconds(newItemModel.globalStartTime))s, duration=\(CMTimeGetSeconds(remainingDuration))s")
+                
+                // ✅ CRITICAL: Generate thumbnails BEFORE inserting into array
+                let thumbnailGroup = DispatchGroup()
+                
+                // Generate thumbnails for original item (may need refresh)
+                thumbnailGroup.enter()
+                itemModel.generateThumbnails(with: max(1, Int(CMTimeGetSeconds(selectedDuration) / 2))) { _ in
+                    print("✅ Original item thumbnails updated")
+                    thumbnailGroup.leave()
+                }
+                
+                // Generate thumbnails for new item
+                thumbnailGroup.enter()
+                newItemModel.generateThumbnails(with: max(1, Int(CMTimeGetSeconds(remainingDuration) / 2))) { _ in
+                    print("✅ New item thumbnails generated")
+                    thumbnailGroup.leave()
+                }
+                
+                // ✅ Wait for ALL thumbnails before proceeding
+                thumbnailGroup.notify(queue: .main) {
+                    // Insert new item AFTER thumbnails ready
+                    self.renderTrackItemModelArray.insert(newItemModel, at: self.currentSelectedIndex! + 1)
+                    self.refreshItemTime()
+                    
+                    print("✂️ === CLIP COMPLETED ===")
+                    completion(nil)
+                }
+                
             } else {
-                completion(NSError.init())
+                print("❌ Clip operation failed: \(String(describing: error))")
+                completion(NSError())
             }
         }
     }
@@ -277,5 +427,25 @@ class VLETimeLineStateModel {
         
         print("🔍 Main track duration calculated: \(CMTimeGetSeconds(totalDuration))s")
         return totalDuration
+    }
+    
+    func validateTimelineConsistency() -> Bool {
+        print("🔍 === TIMELINE VALIDATION ===")
+        
+        // Check main track continuity
+        var expectedStart = CMTime.zero
+        for (index, item) in renderTrackItemModelArray.enumerated() {
+            if item.globalStartTime != expectedStart {
+                print("❌ Gap detected at index \(index): expected \(CMTimeGetSeconds(expectedStart))s, got \(CMTimeGetSeconds(item.globalStartTime))s")
+                return false
+            }
+            expectedStart = CMTimeAdd(expectedStart, item.source.selectedTimeRange.duration)
+        }
+        
+        print("✅ Main track is continuous")
+        print("📊 Main track duration: \(CMTimeGetSeconds(expectedStart))s")
+        print("📊 Total timeline: \(totalSeconds)s")
+        
+        return true
     }
 }

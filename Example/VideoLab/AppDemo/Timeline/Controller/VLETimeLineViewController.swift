@@ -121,13 +121,9 @@ class VLETimeLineViewController: UIViewController {
     }
 
     public func addAssetToRenderTrackViewWith(itemModelArray: [VLETimeLineItemModel]) {
-        guard !itemModelArray.isEmpty else {
-            return
-        }
+        guard !itemModelArray.isEmpty else { return }
         stateModel.renderTrackItemModelArray.append(contentsOf: itemModelArray)
-        stateModel.refreshItemTime()
-        reloadView()
-        VLEMainConcreteMediator.shared.previewTimeLineItem(videoLab: buildVideolab())
+        notifyTimelineChanged()
     }
 
     public func addAudioToSeparateRenderLayerWith(source: Source) {
@@ -300,40 +296,94 @@ extension VLETimeLineViewController: VLETimeLineDragSortViewDelegate {
         return CMTime(seconds: Double(timeSeconds), preferredTimescale: 600)
     }
 
+    func validateOverlayTiming(requestedTime: CMTime, overlayDuration: CMTime) -> (isValid: Bool, correctedTime: CMTime?, warningMessage: String?) {
+        let mainDuration = stateModel.calculateMainTrackDuration()
+        let mainDurationSeconds = CMTimeGetSeconds(mainDuration)
+        let requestedSeconds = CMTimeGetSeconds(requestedTime)
+        let overlayDurationSeconds = CMTimeGetSeconds(overlayDuration)
+        
+        if requestedSeconds >= mainDurationSeconds {
+            // Completely outside
+            let correctedTime = CMTime(seconds: max(0, mainDurationSeconds - overlayDurationSeconds), preferredTimescale: 600)
+            return (false, correctedTime, "Overlay time (\(Int(requestedSeconds))s) is beyond main video (\(Int(mainDurationSeconds))s). Auto-corrected to \(Int(CMTimeGetSeconds(correctedTime)))s.")
+        } else if (requestedSeconds + overlayDurationSeconds) > mainDurationSeconds {
+            // Partially outside
+            let correctedTime = CMTime(seconds: mainDurationSeconds - overlayDurationSeconds, preferredTimescale: 600)
+            return (false, correctedTime, "Overlay would extend beyond main video. Adjusted to end exactly with main video.")
+        } else {
+            // Valid
+            return (true, nil, nil)
+        }
+    }
 
     // ✅ FIND EXISTING timelineDargSortViewChangedSeparate() method and REPLACE it:
     func timelineDargSortViewChangedSeparate(with selectedIndex: Int, dragPositionXRate: Float) {
-        print("🎯 === PRECISE OVERLAY POSITIONING WITH SLIDER ===")
+        print("🎯 === PRECISE OVERLAY POSITIONING WITH VALIDATION ===")
         
         dragSortView?.removeFromSuperview()
         dragSortView = nil
         
-        // ✅ USE PENDING TIME FROM SLIDER (handled in state model)
-        let targetTime = stateModel.getPendingOverlayStartTime() ?? CMTime.zero
-        let mainTrackDuration = stateModel.calculateMainTrackDuration()
-        let clampedTime = CMTimeMinimum(targetTime, mainTrackDuration)
+        // ✅ GET REQUESTED TIME AND OVERLAY DURATION
+        let requestedTime = stateModel.getPendingOverlayStartTime() ?? CMTime.zero
+        let overlayModel = stateModel.renderTrackItemModelArray[selectedIndex]
+        let overlayDuration = overlayModel.source.selectedTimeRange.duration
         
-        print("🎯 Slider selected time: \(CMTimeGetSeconds(targetTime))s")
-        print("🎯 Main track duration: \(CMTimeGetSeconds(mainTrackDuration))s")
-        print("🎯 Final overlay time: \(CMTimeGetSeconds(clampedTime))s")
+        // ✅ VALIDATE TIMING
+        let validation = validateOverlayTiming(requestedTime: requestedTime, overlayDuration: overlayDuration)
         
-        stateModel.renderTrackItemModelConvertToSeparate(at: selectedIndex, startTime: clampedTime)
-        stateModel.refreshItemTime()
-        
-        if let lastItem = stateModel.separateRenderTrackItemModelArray.last {
-            let separateTrackView = createSeparateRenderTrackView(with: lastItem)
-            separateRenderTrackViewArray.append(separateTrackView)
-            print("✅ Overlay created at: \(CMTimeGetSeconds(lastItem.globalStartTime))s")
+        if !validation.isValid {
+            // ✅ SHOW WARNING DIALOG
+            let alert = UIAlertController(title: "Overlay Timing Adjusted", message: validation.warningMessage, preferredStyle: .alert)
             
-            // ✅ VISUAL FEEDBACK
-            highlightNewOverlay(separateTrackView)
+            alert.addAction(UIAlertAction(title: "OK, Use Corrected Time", style: .default) { _ in
+                // Update pending time with corrected value
+                if let correctedTime = validation.correctedTime {
+                    self.stateModel.setPendingOverlayStartTime(correctedTime)
+                }
+                self.performOverlayConversion(selectedIndex: selectedIndex)
+            })
+            
+            alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+            
+            self.present(alert, animated: true)
+        } else {
+            // ✅ TIME IS VALID - PROCEED NORMALLY
+            performOverlayConversion(selectedIndex: selectedIndex)
+        }
+    }
+    
+    // ✅ REPLACE performOverlayConversion() method:
+    func performOverlayConversion(selectedIndex: Int) {
+        print("🎬 === PERFORMING OVERLAY CONVERSION ===")
+        
+        stateModel.renderTrackItemModelConvertToSeparate(at: selectedIndex, startTime: CMTime.zero)
+        stateModel.validateTimelineConsistency()
+        // ✅ CRITICAL: Complete UI refresh sequence
+        DispatchQueue.main.async {
+            // 1. Rebuild timeline UI
+            self.reloadView()
+            
+            // 2. Create overlay UI
+            if let lastItem = self.stateModel.separateRenderTrackItemModelArray.last {
+                let separateTrackView = self.createSeparateRenderTrackView(with: lastItem)
+                self.separateRenderTrackViewArray.append(separateTrackView)
+                print("✅ Overlay view created")
+                
+                self.highlightNewOverlay(separateTrackView)
+            }
+            
+            // 3. Update playback
+            VLEMainConcreteMediator.shared.previewTimeLineItem(videoLab: self.buildVideolab())
+            
+            // 4. Hide cursor
+            self.hideOverlayCursor()
+            
+            print("✅ UI refresh completed")
         }
         
-        reloadView()
-        VLEMainConcreteMediator.shared.previewTimeLineItem(videoLab: buildVideolab())
-        hideOverlayCursor()
-        print("🎯 === END PRECISE POSITIONING ===")
+        print("🎬 === OVERLAY CONVERSION COMPLETED ===")
     }
+    
 
     // ✅ ADD VISUAL FEEDBACK METHOD
     func highlightNewOverlay(_ overlayView: VLETimeLineSeparateRenderTrackView) {
@@ -392,21 +442,15 @@ extension VLETimeLineViewController: VLETimeLineDragSortViewDelegate {
         dragSortView?.removeFromSuperview()
         dragSortView = nil
         stateModel.renderTrackItemModelArray.remove(at: selectedIndex)
-        stateModel.refreshItemTime()
-        reloadView()
-        VLEMainConcreteMediator.shared.previewTimeLineItem(videoLab: buildVideolab())
+        notifyTimelineChanged()
     }
 
     func timeLineDargSortViewDidSort(with selectedIndex: Int, targetIndex: Int) {
         dragSortView?.removeFromSuperview()
         dragSortView = nil
-        guard selectedIndex != targetIndex else {
-            return
-        }
+        guard selectedIndex != targetIndex else { return }
         self.stateModel.swapItemForRenderTrack(selectedIndex: selectedIndex, targetIndex: targetIndex)
-        stateModel.refreshItemTime()
-        reloadView()
-        VLEMainConcreteMediator.shared.previewTimeLineItem(videoLab: buildVideolab())
+        notifyTimelineChanged()
     }
     
     
@@ -415,6 +459,23 @@ extension VLETimeLineViewController: VLETimeLineDragSortViewDelegate {
         timelineCursor.isHidden = true
         cursorTimeLabel.isHidden = true
         print("🎯 Overlay cursor hidden")
+    }
+    
+    /// Consolidated method to handle all timeline state changes
+    private func notifyTimelineChanged() {
+        stateModel.refreshItemTime()
+        reloadView()
+        VLEMainConcreteMediator.shared.previewTimeLineItem(videoLab: buildVideolab())
+        updateDragSortSliderRange()
+        
+        print("🔄 Timeline updated - Duration: \(stateModel.totalSeconds)s")
+    }
+    
+    func updateDragSortSliderRange() {
+        if let dragSort = dragSortView {
+            dragSort.refreshSliderRange()
+            print("🔄 Updated drag sort slider range")
+        }
     }
 
 }
@@ -453,6 +514,16 @@ extension VLETimeLineViewController: VLETimeLineRenderTrackViewDelegate {
     }
 
     func showRenderTrackDragView(with sourceView: VLETimeLineRenderTrackSegmentView, index: Int) {
+        // ✅ FIX: Remove existing drag view first
+       renderLayerDargView?.removeFromSuperview()
+       renderLayerDargView = nil
+       
+       // ✅ FIX: Validate index bounds
+       guard index < stateModel.renderTrackItemModelArray.count else {
+           print("❌ Invalid drag view index: \(index) >= \(stateModel.renderTrackItemModelArray.count)")
+           return
+       }
+        
         if let itemModel = stateModel.currentSelectedItemModel {
             if itemModel.isSeparateRenderTrack {
                 let separateView = separateRenderTrackViewArray[stateModel.currentSelectedIndex!]
@@ -515,10 +586,12 @@ extension VLETimeLineViewController: VLETimeLineRenderTrackDragViewDelegate {
         }
         stateModel.refreshItemTime()
         reloadScaleView()
+        notifyTimelineChanged()
     }
 
     func renderTrackDragViewIsDragEnd() {
         VLEMainConcreteMediator.shared.previewTimeLineItem(videoLab: buildVideolab())
+        updateDragSortSliderRange()
     }
 }
 
@@ -563,29 +636,61 @@ extension VLETimeLineViewController: VLETimeLineSeparateRenderTrackViewDelegate 
         stateModel.currentSelectedItemModel = nil
         stateModel.currentSelectedIndex = nil
         toolBarView.refreshClipButtonState(isShow: false)
-        stateModel.refreshItemTime()
-        reloadView()
-        VLEMainConcreteMediator.shared.previewTimeLineItem(videoLab: buildVideolab())
+        notifyTimelineChanged()
     }
 }
 
 extension VLETimeLineViewController: VLETimeLineToolBarViewDelegate {
 
+    // ✅ REPLACE method trong VLETimeLineViewController.swift:
     func clipRenderTrackView(at offsetX: CGFloat, itemModel: VLETimeLineItemModel) {
         let segmentView = renderTrackView.segmentViewArray[stateModel.currentSelectedIndex!]
         let originx = segmentView.frame.origin.x
         let segmentw = segmentView.bounds.width
+        
         if (offsetX >= originx) && (offsetX < (originx + segmentw)) {
             let rate = Float((offsetX - originx) / segmentw)
-            stateModel.clipRenderTrackItemModelAtCurrentIndex(clipRate: rate) { [weak self ] error in
-                guard let self = self else {return}
+            
+            print("✂️ Clipping at rate: \(rate), offset: \(offsetX), origin: \(originx), width: \(segmentw)")
+            
+            stateModel.clipRenderTrackItemModelAtCurrentIndex(clipRate: rate) { [weak self] error in
+                guard let self = self else { return }
+                
                 if error == nil {
-                    self.renderTrackView.refreshSegmentViewWith(itemModelArray: self.stateModel.renderTrackItemModelArray)
-                    self.renderTrackView.layoutIfNeeded()
-                    self.showRenderTrackDragView(with: self.renderTrackView.segmentViewArray[self.stateModel.currentSelectedIndex!+1], index: self.stateModel.currentSelectedIndex!+1)
+                    print("✅ Clip successful, refreshing UI...")
+                    
+                    // ✅ FIX: Single comprehensive refresh instead of multiple calls
+                    DispatchQueue.main.async {
+                        // 1. Update timeline views
+                        self.reloadRenderTrackView()  // Only reload render track
+                        self.reloadScaleView()        // Only reload scale
+                        
+                        // 2. Force layout
+                        self.renderTrackView.layoutIfNeeded()
+                        
+                        // 3. Show drag view for NEW segment
+                        let newIndex = self.stateModel.currentSelectedIndex! + 1
+                        if newIndex < self.renderTrackView.segmentViewArray.count {
+                            self.showRenderTrackDragView(
+                                with: self.renderTrackView.segmentViewArray[newIndex],
+                                index: newIndex
+                            )
+                        }
+                        
+                        // 4. Update playback ONCE
+                        VLEMainConcreteMediator.shared.previewTimeLineItem(videoLab: self.buildVideolab())
+                        
+                        print("✅ Single UI refresh completed")
+                    }
+                    
+                } else {
+                    print("❌ Clip operation failed")
+                    HUD.show(.label("Clip operation failed"))
+                    HUD.hide(afterDelay: 1.0)
                 }
             }
         } else {
+            print("❌ Invalid clip position")
             HUD.show(.label("Invalid position selected!"))
             HUD.hide(afterDelay: 0.5)
         }
@@ -780,6 +885,29 @@ extension VLETimeLineViewController {
         self.present(alert, animated: true)
     }
 
+    private func forceCompleteReload() {
+        print("🔄 === FORCE COMPLETE RELOAD ===")
+        
+        // 1. Clear existing UI state
+        renderLayerDargView?.removeFromSuperview()
+        renderLayerDargView = nil
+        
+        // 2. Rebuild timeline components
+        reloadRenderTrackView()
+        reloadScaleView()
+        
+        // 3. Update scroll view content
+        let scaleViewWidth = stateModel.fetchScaleViewWidth()
+        let contentWidth = scaleViewWidth + stateModel.fetchScaleFrontMargin() + stateModel.fetchScaleBackMargin()
+        backScrollView.contentSize = CGSize(width: contentWidth, height: 210)
+        
+        // 4. Force layout update
+        view.layoutIfNeeded()
+        
+        print("🔄 Complete reload finished")
+    }
+
+    // ✅ MODIFY existing reloadView():
     func reloadView() {
         reloadScaleView()
         reloadRenderTrackView()

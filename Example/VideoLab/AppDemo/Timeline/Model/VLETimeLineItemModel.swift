@@ -96,46 +96,65 @@ class VLETimeLineItemModel {
         self.renderLayer.timeRange.start = self.globalStartTime
     }
 
+    // ✅ ADD improved thumbnail calculation trong VLETimeLineItemModel.swift:
     func generateThumbnails(with count: Int, completion: @escaping (NSError?) -> Void) {
+        // ✅ Clear existing thumbnails first
+        self.thumbnailImageArray.removeAll()
+        
+        print("🖼️ Generating \(count) thumbnails for duration: \(CMTimeGetSeconds(self.source.selectedTimeRange.duration))s")
+        
         if self.source is PHAssetVideoSource {
-            if self.thumbnailImageArray.isEmpty == false {
-                self.thumbnailImageArray.removeAll()
-            }
             let phSource = self.source as! PHAssetVideoSource
             var times: [NSValue] = []
-            let increment : Float = Float(self.source.duration.value) / Float(count)
-            var currentValue : Float = 2 * Float(self.source.duration.timescale)
-            let zeroTime = CMTime.init(value: 0, timescale: self.source.duration.timescale)
-            times.append(NSValue.init(time: zeroTime))
-            while currentValue < Float(self.source.duration.value) {
-                let time = CMTime.init(value: CMTimeValue.init(currentValue), timescale: self.source.duration.timescale)
-                times.append(NSValue.init(time: time))
-                currentValue += increment
+            
+            // ✅ Improved time calculation
+            let duration = self.source.selectedTimeRange.duration
+            let startTime = self.source.selectedTimeRange.start
+            
+            if count == 1 {
+                // Single thumbnail at middle of selected range
+                let midTime = CMTimeAdd(startTime, CMTimeMultiplyByFloat64(duration, multiplier: 0.5))
+                times.append(NSValue(time: midTime))
+            } else {
+                // Multiple thumbnails evenly distributed
+                let increment = Float(duration.value) / Float(count)
+                var currentValue = Float(startTime.value)
+                
+                for _ in 0..<count {
+                    let time = CMTime(value: CMTimeValue(currentValue), timescale: duration.timescale)
+                    times.append(NSValue(time: time))
+                    currentValue += increment
+                }
             }
-
-            phSource.thumbnails(for: times, maximumSize: CGSize.init(width: 720, height: 720)) { requestedTime, imageRef, actualTime, result, _ in
+            
+            print("🖼️ Thumbnail times: \(times.map { CMTimeGetSeconds($0.timeValue) })")
+            
+            phSource.thumbnails(for: times, maximumSize: CGSize(width: 720, height: 720)) { requestedTime, imageRef, actualTime, result, _ in
                 if result == AVAssetImageGenerator.Result.succeeded {
                     DispatchQueue.main.async {
-                        let image = UIImage.init(cgImage: imageRef!)
+                        let image = UIImage(cgImage: imageRef!)
                         self.thumbnailImageArray.append(image)
+                        
                         if self.thumbnailImageArray.count == count {
+                            print("✅ All thumbnails generated successfully")
                             completion(nil)
                         }
                     }
+                } else {
+                    print("❌ Thumbnail generation failed for time: \(CMTimeGetSeconds(requestedTime))")
                 }
             }
         } else if self.source is PHAssetImageSource {
             let phSource = self.source as! PHAssetImageSource
-            var imageCount = 0
-            let increment : Float = Float(self.source.duration.value) / Float(count)
-            var currentValue : Float = 2 * Float(self.source.duration.timescale)
-            while currentValue < Float(self.source.duration.value) {
-                imageCount += 1
-                currentValue += increment
+            if let cgImage = phSource.texture(at: CMTime.zero)?.texture.toImage() {
+                let image = UIImage(cgImage: cgImage)
+                self.thumbnailImageArray.append(image)
+                print("✅ Image thumbnail generated")
+                completion(nil)
+            } else {
+                print("❌ Image thumbnail generation failed")
+                completion(NSError())
             }
-            let image = UIImage.init(cgImage: (phSource.texture(at: CMTime.zero)?.texture.toImage())!)
-            self.thumbnailImageArray.append(image)
-            completion(nil)
         }
     }
 }
