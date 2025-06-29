@@ -76,7 +76,14 @@ class VLETimeLineStateModel {
     }
     
     public func fetchScaleViewWidth() -> CGFloat {
-        return calculateScaleWidth()
+        // ✅ FIX: Base scale on main track duration, not total duration
+       let mainTrackDuration = calculateMainTrackDuration()
+       let mainTrackSeconds = CMTimeGetSeconds(mainTrackDuration)
+       
+       print("🔍 Scale width calculation - Main track: \(mainTrackSeconds)s, Total: \(totalSeconds)s")
+       
+       // ✅ Use main track duration for timeline scale
+       return CGFloat(mainTrackSeconds * Float64(VLETimeLineConfig.framesPerSecond)) * VLETimeLineConfig.ptPerFrames
     }
 
     public func fetchScaleFrontMargin() -> CGFloat {
@@ -210,11 +217,16 @@ class VLETimeLineStateModel {
         selectedModel.renderLayer.transform = transform
         
         separateRenderTrackItemModelArray.append(selectedModel)
+            
+        // ✅ ADD: Validate overlay ranges
+        validateOverlayTimeRanges()
         
         // ✅ Final refresh
         refreshItemTime()
+            
+            
         
-        print("✅ Separate operation completed")
+        print("✅ Separate operation completed with validation")
         print("📊 Final state - Main: \(renderTrackItemModelArray.count), Overlay: \(separateRenderTrackItemModelArray.count)")
         print("📊 New total duration: \(totalSeconds)s")
         print("🔍 === END SEPARATE DEBUG ===")
@@ -377,19 +389,50 @@ class VLETimeLineStateModel {
         }
     }
 
+    // ✅ REPLACE refreshItemTime() method:
     public func refreshItemTime() {
-        var sum: CMTime = CMTime.zero
+        print("🔄 === REFRESH ITEM TIME ===")
+        
+        // ✅ 1. Update main track (sequential)
+        var mainTrackDuration: CMTime = CMTime.zero
         for item in renderTrackItemModelArray {
-            item.globalStartTime = sum
-            item.renderLayer.timeRange = CMTimeRange.init(start: sum, duration: item.source.selectedTimeRange.duration)
-            sum = CMTimeAdd(sum, item.source.selectedTimeRange.duration)
+            item.globalStartTime = mainTrackDuration
+            item.renderLayer.timeRange = CMTimeRange(start: mainTrackDuration, duration: item.source.selectedTimeRange.duration)
+            mainTrackDuration = CMTimeAdd(mainTrackDuration, item.source.selectedTimeRange.duration)
         }
+        
+        print("🔄 Main track duration: \(CMTimeGetSeconds(mainTrackDuration))s")
+        
+        // ✅ 2. Validate overlay tracks against main track
+        var maxOverlayEnd = mainTrackDuration
         for item in separateRenderTrackItemModelArray {
-            let endTime = CMTimeAdd(item.globalStartTime, item.source.selectedTimeRange.duration)
-            sum = CMTimeMaximum(sum, endTime)
+            // ✅ Ensure overlay doesn't extend beyond main track
+            let overlayStart = item.globalStartTime
+            let overlayDuration = item.source.selectedTimeRange.duration
+            let overlayEnd = CMTimeAdd(overlayStart, overlayDuration)
+            
+            if CMTimeCompare(overlayEnd, mainTrackDuration) > 0 {
+                // ✅ Trim overlay if it extends beyond main track
+                let correctedDuration = CMTimeSubtract(mainTrackDuration, overlayStart)
+                if CMTimeGetSeconds(correctedDuration) > 0.5 {
+                    item.source.selectedTimeRange.duration = correctedDuration
+                    item.renderLayer.timeRange.duration = correctedDuration
+                    print("✂️ Auto-trimmed overlay to fit main track")
+                }
+            }
+            
+            // ✅ Update render layer timeRange
+            item.renderLayer.timeRange = CMTimeRange(start: overlayStart, duration: item.source.selectedTimeRange.duration)
+            
+            maxOverlayEnd = CMTimeMaximum(maxOverlayEnd, CMTimeAdd(overlayStart, item.source.selectedTimeRange.duration))
         }
-        self.totalDuration = sum
-        self.totalSeconds = VLETimeLineConfig.convertToSecond(value: sum)
+        
+        // ✅ 3. Set total duration to main track duration (not including overlay extensions)
+        self.totalDuration = mainTrackDuration  // ← KEY FIX
+        self.totalSeconds = VLETimeLineConfig.convertToSecond(value: mainTrackDuration)
+        
+        print("🔄 Final total duration: \(totalSeconds)s (based on main track)")
+        print("🔄 === END REFRESH ===")
     }
 
     public func swapItemForRenderTrack(selectedIndex: Int, targetIndex: Int) {
@@ -447,5 +490,37 @@ class VLETimeLineStateModel {
         print("📊 Total timeline: \(totalSeconds)s")
         
         return true
+    }
+    
+    // ✅ ADD validation method trong VLETimeLineStateModel.swift:
+    private func validateOverlayTimeRanges() {
+        let mainDuration = calculateMainTrackDuration()
+        let mainDurationSeconds = CMTimeGetSeconds(mainDuration)
+        
+        print("🔍 === OVERLAY VALIDATION ===")
+        print("🔍 Main track duration: \(mainDurationSeconds)s")
+        
+        for (index, item) in separateRenderTrackItemModelArray.enumerated() {
+            let startSeconds = CMTimeGetSeconds(item.globalStartTime)
+            let durationSeconds = CMTimeGetSeconds(item.source.selectedTimeRange.duration)
+            let endSeconds = startSeconds + durationSeconds
+            
+            print("🔍 Overlay \(index): \(startSeconds)s - \(endSeconds)s")
+            
+            if endSeconds > mainDurationSeconds {
+                print("⚠️ Overlay \(index) extends beyond main track!")
+                
+                // ✅ FIX: Trim overlay to fit within main track
+                let maxAllowedDuration = mainDurationSeconds - startSeconds
+                if maxAllowedDuration > 0.5 {
+                    item.source.selectedTimeRange.duration = CMTime(seconds: maxAllowedDuration, preferredTimescale: 600)
+                    item.renderLayer.timeRange.duration = item.source.selectedTimeRange.duration
+                    print("✂️ Trimmed overlay \(index) to duration: \(maxAllowedDuration)s")
+                } else {
+                    print("❌ Overlay \(index) too close to end, should be removed")
+                }
+            }
+        }
+        print("🔍 === END VALIDATION ===")
     }
 }

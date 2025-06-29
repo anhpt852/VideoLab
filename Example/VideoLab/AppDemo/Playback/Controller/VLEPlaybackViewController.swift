@@ -129,6 +129,9 @@ class VLEPlaybackViewController : UIViewController{
             self.player?.replaceCurrentItem(with: playerItem)
         } else {
             self.player = AVPlayer(playerItem: playerItem)
+            self.player?.volume = 1.0  // Đảm bảo volume = 100%
+            self.player?.isMuted = false  // Đảm bảo không bị mute
+            
             let avplayerLayer = AVPlayerLayer.init(player: self.player)
             avplayerLayer.videoGravity = .resizeAspect
             let bounds = playbackView.bounds
@@ -140,6 +143,15 @@ class VLEPlaybackViewController : UIViewController{
                 self.playbackControlView.timeLabel.text = self.convertSecond(for: time)
                 VLEMainConcreteMediator.shared.playbackProgressValueDidChanged(currentTime: time)
             })
+        }
+        let audioTracks = playerItem.asset.tracks(withMediaType: .audio)
+        if !audioTracks.isEmpty {
+            print("✅ Audio tracks found: \(audioTracks.count)")
+            for (index, track) in audioTracks.enumerated() {
+                print("🔍 Audio track \(index): enabled=\(track.isEnabled), volume=\(track.preferredVolume)")
+            }
+        } else {
+            print("❌ No audio tracks in video")
         }
         self.player?.seek(to: CMTime.init(seconds: 0, preferredTimescale: 600))
     }

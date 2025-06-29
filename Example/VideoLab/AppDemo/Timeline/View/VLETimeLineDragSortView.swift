@@ -27,28 +27,49 @@ class VLETimeLineDragSortView: UIView {
     var itemVerticalSpace: CGFloat = 35
     var itemWidth: CGFloat = 60
     var itemImageArray: [UIImage] = []
+    // ✅ REPLACE lazy vars trong VLETimeLineDragSortView.swift:
     lazy var realTimeLabel: UILabel = {
         let label = UILabel()
         label.font = UIFont.monospacedDigitSystemFont(ofSize: 20, weight: .bold)
         label.textColor = UIColor.systemBlue
         label.backgroundColor = UIColor.white.withAlphaComponent(0.95)
         label.textAlignment = .center
-        label.text = "00:00"
-        label.layer.cornerRadius = 12
+        label.text = "00:00.00"
+        label.layer.cornerRadius = 10
         label.layer.masksToBounds = true
         label.layer.borderWidth = 2
         label.layer.borderColor = UIColor.systemBlue.cgColor
-        label.isHidden = true
+        label.numberOfLines = 1
+        label.adjustsFontSizeToFitWidth = true
+        label.minimumScaleFactor = 0.8
+        // ✅ NO isHidden - always visible
         return label
     }()
 
     lazy var instructionLabel: UILabel = {
         let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: 14, weight: .medium)
-        label.textColor = UIColor.white.withAlphaComponent(0.8)
+        label.font = UIFont.systemFont(ofSize: 12, weight: .medium)
+        label.textColor = UIColor.white.withAlphaComponent(0.9)
         label.textAlignment = .center
         label.text = "Move horizontally to select time"
+        label.numberOfLines = 1
+        label.adjustsFontSizeToFitWidth = true
+        label.minimumScaleFactor = 0.7
+        // ✅ NO isHidden - always visible
+        return label
+    }()
+
+    // ✅ ADD new label for "Select overlay start time"
+    lazy var titleLabel: UILabel = {
+        let label = UILabel()
+        label.font = UIFont.systemFont(ofSize: 14, weight: .semibold)
+        label.textColor = UIColor.systemBlue
+        label.textAlignment = .center
+        label.text = "Select overlay start time"
         label.isHidden = true
+        label.numberOfLines = 1
+        label.adjustsFontSizeToFitWidth = true
+        label.minimumScaleFactor = 0.8
         return label
     }()
     
@@ -138,11 +159,11 @@ class VLETimeLineDragSortView: UIView {
         fatalError("")
     }
     
-    // ✅ MODIFY setupView() method - add after headerLabel setup:
+    // ✅ REPLACE setupView() method:
     func setupView() {
         self.backgroundColor = UIColor.init(hexString: "#212123")
-        
-        scrollView.contentSize = CGSize.init(width: contentWidth, height: 300)
+            
+        scrollView.contentSize = CGSize.init(width: contentWidth, height: 320)
         self.addSubview(scrollView)
         scrollView.snp.makeConstraints { make in
             make.edges.equalToSuperview()
@@ -151,32 +172,39 @@ class VLETimeLineDragSortView: UIView {
         scrollView.addSubview(headerView)
         headerView.snp.makeConstraints { make in
             make.width.equalTo(contentWidth)
-            make.height.equalTo(80)  // ✅ Increased for time display
+            make.height.equalTo(100)
             make.left.top.equalToSuperview()
         }
         
-        // ✅ Header label (instruction)
-        headerView.addSubview(headerLabel)
-        headerLabel.snp.makeConstraints { make in
-            make.centerX.equalToSuperview()
-            make.top.equalToSuperview().offset(8)
-        }
-        
-        // ✅ ADD real-time display
+        // ✅ Time display always visible
         headerView.addSubview(realTimeLabel)
         realTimeLabel.snp.makeConstraints { make in
             make.centerX.equalToSuperview()
-            make.width.equalTo(200)
-            make.height.equalTo(35)
-            make.top.equalTo(headerLabel.snp.bottom).offset(8)
+            make.width.equalTo(120)
+            make.height.equalTo(32)
+            make.top.equalToSuperview().offset(15)
         }
         
-        // ✅ ADD instruction label
+        // ✅ Instruction always visible
         headerView.addSubview(instructionLabel)
         instructionLabel.snp.makeConstraints { make in
             make.centerX.equalToSuperview()
-            make.top.equalTo(realTimeLabel.snp.bottom).offset(4)
+            make.left.greaterThanOrEqualToSuperview().offset(20)
+            make.right.lessThanOrEqualToSuperview().offset(-20)
+            make.top.equalTo(realTimeLabel.snp.bottom).offset(8)
         }
+        
+        // ✅ Header label below (or remove entirely)
+        headerView.addSubview(headerLabel)
+        headerLabel.snp.makeConstraints { make in
+            make.centerX.equalToSuperview()
+            make.bottom.equalToSuperview().offset(-5)
+            make.left.greaterThanOrEqualToSuperview().offset(20)
+            make.right.lessThanOrEqualToSuperview().offset(-20)
+        }
+        
+        // ✅ Set default text
+        resetDisplayToDefault()
         
         // ✅ Rest of existing setup...
         scrollView.addSubview(stackView)
@@ -385,49 +413,44 @@ extension VLETimeLineDragSortView {
     }
 
 
-    // ✅ REPLACE EXISTING moveSortView() method:
+    // ✅ REPLACE moveSortView() method - REMOVE hide/show calls:
     func moveSortView(with sender: UILongPressGestureRecognizer) {
         dragSortGridView.moveDragItemView(with: sender)
         let point = sender.location(in: dragSortGridView)
         
-        if (point.y < 0) && (point.y > -80) {  // ✅ Adjusted for new header height
+        if (point.y < 0) && (point.y > -100) {
             isSelectedHeaderView = true
             isSelectedFooterView = false
             
-            // ✅ Show time display UI
-            showTimeDisplayUI()
-            
-            // ✅ Calculate and display real-time position
+            // ✅ ONLY update content, NO hide/show
             let headerPoint = sender.location(in: self)
             let timelinePosition = calculateTimelinePositionFromDrag(dragX: headerPoint.x)
-            updateRealTimeDisplay(time: timelinePosition)
+            updateRealTimeDisplay(time: timelinePosition)  // ✅ Just update text
             updatePendingOverlayTime(timelinePosition)
             
-            // ✅ Show cursor at calculated position
+            // ✅ Show cursor
             if let timelineVC = self.delegate as? VLETimeLineViewController {
                 timelineVC.showOverlayCursor()
                 timelineVC.updateCursorPosition(time: timelinePosition)
             }
             
-            print("🎯 Real-time positioning: X=\(headerPoint.x)px → Time=\(CMTimeGetSeconds(timelinePosition))s")
-            
-        } else if (point.y > 150) && (point.y < 235) {  // Delete area
+        } else if (point.y > 150) && (point.y < 235) {
             isSelectedHeaderView = false
             isSelectedFooterView = true
             
-            // ✅ Hide time display
-            hideTimeDisplayUI()
+            // ✅ NO hide calls - just reset text
+            resetDisplayToDefault()
             
             if let timelineVC = self.delegate as? VLETimeLineViewController {
                 timelineVC.hideOverlayCursor()
             }
             
-        } else {  // Normal area
+        } else {
             isSelectedHeaderView = false
             isSelectedFooterView = false
             
-            // ✅ Hide time display
-            hideTimeDisplayUI()
+            // ✅ NO hide calls - just reset text
+            resetDisplayToDefault()
             
             if let timelineVC = self.delegate as? VLETimeLineViewController {
                 timelineVC.hideOverlayCursor()
@@ -435,18 +458,17 @@ extension VLETimeLineDragSortView {
         }
     }
 
-    // ✅ ADD to beginning of endSortView() method:
+    // ✅ REPLACE endSortView() method:
     func endSortView(with sender: UILongPressGestureRecognizer) {
         dragSortGridView.endDragItemView(with: sender)
         
-        // ✅ Hide time display when drag ends
-        hideTimeDisplayUI()
+        // ✅ Just reset text, NO hiding
+        resetDisplayToDefault()
         
         if let timelineVC = self.delegate as? VLETimeLineViewController {
             timelineVC.hideOverlayCursor()
         }
         
-        // ✅ Rest of existing logic...
         if isSelectedHeaderView == true {
             let finalTime = selectedOverlayTime
             print("🎯 Final selected time: \(CMTimeGetSeconds(finalTime))s")
@@ -517,57 +539,33 @@ extension VLETimeLineDragSortView {
 
     // MARK: - Real-Time Display Methods
 
-    private func showTimeDisplayUI() {
-        realTimeLabel.isHidden = false
-        instructionLabel.isHidden = false
-        
-        // ✅ Animate appearance
-        realTimeLabel.transform = CGAffineTransform(scaleX: 0.8, y: 0.8)
-        UIView.animate(withDuration: 0.2, delay: 0, usingSpringWithDamping: 0.8, initialSpringVelocity: 0.5) {
-            self.realTimeLabel.transform = CGAffineTransform.identity
-        }
-        
-        // ✅ Update header instruction
-        headerLabel.text = "Select overlay start time"
-        headerLabel.textColor = UIColor.systemBlue
-    }
-
-    private func hideTimeDisplayUI() {
-        realTimeLabel.isHidden = true
-        instructionLabel.isHidden = true
-        
-        // ✅ Reset header
-        headerLabel.text = "Drag here to convert to independent layer"
-        headerLabel.textColor = UIColor.white
-    }
 
     private func updateRealTimeDisplay(time: CMTime) {
         let timeString = formatTimeForDisplay(timeInSeconds: CMTimeGetSeconds(time))
         realTimeLabel.text = timeString
         
-        // ✅ Subtle animation for feedback
-        UIView.animate(withDuration: 0.1) {
-            self.realTimeLabel.transform = CGAffineTransform(scaleX: 1.05, y: 1.05)
-        } completion: { _ in
-            UIView.animate(withDuration: 0.1) {
-                self.realTimeLabel.transform = CGAffineTransform.identity
-            }
-        }
-        
-        // ✅ Update instruction with more info
         let mainDuration = getMainDuration()
         let percentage = (CMTimeGetSeconds(time) / CMTimeGetSeconds(mainDuration)) * 100
         instructionLabel.text = String(format: "%.0f%% of timeline", percentage)
+        
+        // ✅ NO animation, just direct update
+        print("🕐 Display updated: \(timeString) (\(String(format: "%.0f", percentage))%)")
+    }
+
+    private func resetDisplayToDefault() {
+        // ✅ Reset to default text instead of hiding
+        realTimeLabel.text = "00:00.00"
+        instructionLabel.text = "Move horizontally to select time"
     }
 
     private func formatTimeForDisplay(timeInSeconds: Double) -> String {
         let totalSeconds = Int(timeInSeconds)
         let minutes = totalSeconds / 60
         let seconds = totalSeconds % 60
-        let milliseconds = Int((timeInSeconds - Double(totalSeconds)) * 100)
+        let centiseconds = Int((timeInSeconds - Double(totalSeconds)) * 100)
         
-        // ✅ Show precise time with centiseconds
-        return String(format: "%02d:%02d.%02d", minutes, seconds, milliseconds)
+        // ✅ Shorter format for better fit
+        return String(format: "%02d:%02d.%02d", minutes, seconds, centiseconds)
     }
 
     private func getMainDuration() -> CMTime {

@@ -25,7 +25,17 @@ class VLEEffectIconView: UIView {
 
     init(with iconImage: String, title: String) {
         super.init(frame: CGRect.zero)
-        iconImageView.image = UIImage.init(named: iconImage)
+        // ✅ THÊM SUPPORT CHO SF SYMBOLS:
+        if #available(iOS 13.0, *) {
+            if iconImage.contains(".") && UIImage(systemName: iconImage) != nil {
+                iconImageView.image = UIImage(systemName: iconImage)
+                iconImageView.tintColor = UIColor.init(hexString: "#D8D8D8")
+            } else {
+                iconImageView.image = UIImage.init(named: iconImage)
+            }
+        } else {
+            // Fallback on earlier versions
+        }
         titleLabel.text = title
         self.addSubview(iconImageView)
         iconImageView.snp.makeConstraints { make in

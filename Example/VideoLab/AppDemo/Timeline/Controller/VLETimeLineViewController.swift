@@ -12,6 +12,7 @@ import CoreMedia
 import PKHUD
 import Photos
 import SnapKit
+import AVFoundation
 
 protocol VLETimeLineDragSortViewDelegateExtended: VLETimeLineDragSortViewDelegate {
     func timelineDargSortViewChangedSeparate(with selectedIndex: Int, dragPositionXRate: Float, overlayPosition: CGPoint)
@@ -203,8 +204,14 @@ class VLETimeLineViewController: UIViewController {
         composition.renderSize = stateModel.renderSize
         composition.layers = renderLayers
         
+        let videoLab = VideoLab(renderComposition: composition)
         print("✅ Final composition: \(renderLayers.count) total layers, renderSize: \(composition.renderSize)")
-        return VideoLab(renderComposition: composition)
+        // ✅ CHECK FINAL COMPOSITION:
+        let finalPlayerItem = videoLab.makePlayerItem()
+        let audioTracks = finalPlayerItem.asset.tracks(withMediaType: .audio)
+        print("🔍 Final composition audio tracks: \(audioTracks.count)")
+        
+        return videoLab
     }
 
 
@@ -220,26 +227,31 @@ class VLETimeLineViewController: UIViewController {
 
     // MARK: - Timeline Cursor Methods
 
-    // ✅ PROPER CONSTRAINT UPDATE METHOD:
+    // ✅ FIND và REPLACE updateCursorPosition() method:
     func updateCursorPosition(time: CMTime) {
         let timeString = formatTime(time)
         cursorTimeLabel.text = timeString
         
-        // ✅ CALCULATE TARGET POSITION
-        let timeSeconds = CMTimeGetSeconds(time)
-        let pixelPosition = VLETimeLineConfig.convertToPt(value: Float(timeSeconds))
+        // ✅ FIX: Calculate position based on MAIN TRACK duration only
+        let mainTrackDuration = stateModel.calculateMainTrackDuration()
+        let maxTimeSeconds = CMTimeGetSeconds(mainTrackDuration)
+        let currentTimeSeconds = CMTimeGetSeconds(time)
+        
+        // ✅ Clamp cursor to main track bounds
+        let clampedTimeSeconds = min(currentTimeSeconds, maxTimeSeconds)
+        let pixelPosition = VLETimeLineConfig.convertToPt(value: Float(clampedTimeSeconds))
         let frontMargin = stateModel.fetchScaleFrontMargin()
         let targetX = pixelPosition + frontMargin
         
-        // ✅ UPDATE STORED CONSTRAINT
+        // ✅ Update constraint
         timelineCursorLeftConstraint?.update(offset: targetX)
         
-        // ✅ ANIMATE THE CHANGE
+        // ✅ Animate
         UIView.animate(withDuration: 0.2, delay: 0, options: [.curveEaseOut]) {
             self.view.layoutIfNeeded()
         }
         
-        print("🎯 Cursor moved to: \(CMTimeGetSeconds(time))s at \(targetX)px")
+        print("🎯 Cursor: \(clampedTimeSeconds)s/\(maxTimeSeconds)s at \(targetX)px")
     }
 
     func formatTime(_ time: CMTime) -> String {
@@ -926,14 +938,19 @@ extension VLETimeLineViewController {
 
     func reloadScaleView() {
         let scaleViewWidth = stateModel.fetchScaleViewWidth()
-        let contentWidth = scaleViewWidth +
-        stateModel.fetchScaleFrontMargin() +
-        stateModel.fetchScaleBackMargin()
+        let contentWidth = scaleViewWidth + stateModel.fetchScaleFrontMargin() + stateModel.fetchScaleBackMargin()
+        
         scaleView.snp.updateConstraints { make in
             make.width.equalTo(scaleViewWidth)
         }
+        
         scaleView.refreshTimeWith(seconds: stateModel.totalSeconds)
-        backScrollView.contentSize = CGSize.init(width: contentWidth, height: 210)
+        
+        // ✅ FIX: Base scroll content on main track, not total timeline
+        let mainTrackSeconds = CMTimeGetSeconds(stateModel.calculateMainTrackDuration())
+        print("🔄 Scroll content based on main track: \(mainTrackSeconds)s")
+        
+        backScrollView.contentSize = CGSize(width: contentWidth, height: 210)
     }
 
     @objc func addAssetButtonClickAction() {

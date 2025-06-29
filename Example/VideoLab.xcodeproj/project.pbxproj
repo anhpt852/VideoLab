@@ -10,6 +10,7 @@
 		0C107FC9284DF99F00629526 /* VLEMainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C107FC8284DF99F00629526 /* VLEMainViewController.swift */; };
 		0C107FCC284DFB7200629526 /* VLEDemoViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C107FCB284DFB7200629526 /* VLEDemoViewController.swift */; };
 		0DA84D5143A71C45A1A551E6 /* Pods_VideoLab_Tests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5C12D39790091FABBA1E2A77 /* Pods_VideoLab_Tests.framework */; };
+		2E8EA43A2E11BD7900592C45 /* VLECapturePreviewViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E8EA4372E11BC8E00592C45 /* VLECapturePreviewViewController.swift */; };
 		2E97F3B0246839680071AC60 /* LUT_M01.png in Resources */ = {isa = PBXBuildFile; fileRef = 2E97F3A6246839680071AC60 /* LUT_M01.png */; };
 		2E97F3B1246839680071AC60 /* LUT_M02.png in Resources */ = {isa = PBXBuildFile; fileRef = 2E97F3A7246839680071AC60 /* LUT_M02.png */; };
 		2E97F3B2246839680071AC60 /* LUT_M03.png in Resources */ = {isa = PBXBuildFile; fileRef = 2E97F3A8246839680071AC60 /* LUT_M03.png */; };
@@ -115,6 +116,7 @@
 		0C107FC8284DF99F00629526 /* VLEMainViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VLEMainViewController.swift; sourceTree = "<group>"; };
 		0C107FCB284DFB7200629526 /* VLEDemoViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VLEDemoViewController.swift; sourceTree = "<group>"; };
 		17730C4D1CE60AFE5DF49FBA /* Pods-VideoLab_Tests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-VideoLab_Tests.debug.xcconfig"; path = "Pods/Target Support Files/Pods-VideoLab_Tests/Pods-VideoLab_Tests.debug.xcconfig"; sourceTree = "<group>"; };
+		2E8EA4372E11BC8E00592C45 /* VLECapturePreviewViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VLECapturePreviewViewController.swift; sourceTree = "<group>"; };
 		2E97F3A6246839680071AC60 /* LUT_M01.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = LUT_M01.png; sourceTree = "<group>"; };
 		2E97F3A7246839680071AC60 /* LUT_M02.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = LUT_M02.png; sourceTree = "<group>"; };
 		2E97F3A8246839680071AC60 /* LUT_M03.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = LUT_M03.png; sourceTree = "<group>"; };
@@ -448,6 +450,7 @@
 		6497DE3928F2EEBA00512DFA /* Controller */ = {
 			isa = PBXGroup;
 			children = (
+				2E8EA4372E11BC8E00592C45 /* VLECapturePreviewViewController.swift */,
 				64F4099628BC96AE00062EED /* VLEEffectViewController.swift */,
 			);
 			path = Controller;
@@ -866,6 +869,7 @@
 				6435238628DE0B91008889AA /* VLETimeLineStateModel.swift in Sources */,
 				6497DE3D28F2EFDC00512DFA /* VLEEffectIconView.swift in Sources */,
 				642D7F4C28DBF5FC0037EA5B /* VLEExportShareView.swift in Sources */,
+				2E8EA43A2E11BD7900592C45 /* VLECapturePreviewViewController.swift in Sources */,
 				64BBC37D2889387600E03DD2 /* VLEPickerViewController.swift in Sources */,
 				6494E48028F56ABA0029F742 /* VLEPickerStickerListModel.swift in Sources */,
 				0C107FCC284DFB7200629526 /* VLEDemoViewController.swift in Sources */,

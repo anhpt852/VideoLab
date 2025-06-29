@@ -15,6 +15,7 @@ enum VLEEffectFirstLevelItemType {
     case audio
     case filter
     case specialeffect
+    case capture
 }
 
 class VLEEffectItemModel {
@@ -28,5 +29,6 @@ class VLEEffectItemModel {
                                [kIconKey: "effect_level1_sticker", kIconTitleKey: "Sticker", kIconType:  VLEEffectFirstLevelItemType.sticker],
                                [kIconKey: "effect_level1_audio", kIconTitleKey: "Audio", kIconType: VLEEffectFirstLevelItemType.audio],
                                [kIconKey: "effect_level1_filter", kIconTitleKey: "Filter", kIconType:VLEEffectFirstLevelItemType.filter],
-                               [kIconKey: "effect_level1_specialeffect", kIconTitleKey: "Special Effects", kIconType: VLEEffectFirstLevelItemType.specialeffect]]
+                               [kIconKey: "effect_level1_specialeffect", kIconTitleKey: "Special Effects", kIconType: VLEEffectFirstLevelItemType.specialeffect],
+                               [kIconKey: "camera.circle", kIconTitleKey: "Capture", kIconType: VLEEffectFirstLevelItemType.capture]]
 }
