@@ -64,7 +64,7 @@ class VLEMainConcreteMediator: VLEMainMediator {
     }
 
     func addStickerToSeparateTrackWith(source: Source) {
-        self.timelineViewController?.addAudioToSeparateRenderLayerWith(source: source)
+        self.timelineViewController?.addStickerToSeparateRenderLayerWith(source: source)
     }
 
     func previewTimeLineItem(videoLab: VideoLab) {

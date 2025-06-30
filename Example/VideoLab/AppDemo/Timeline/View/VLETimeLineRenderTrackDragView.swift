@@ -98,20 +98,30 @@ class VLETimeLineRenderTrackDragView: UIView {
             originalGlobalStartTime = targetView.model.globalStartTime
             originalSelectedStartTime = targetView.model.source.selectedTimeRange.start
             
-            // ✅ LOG START STATE
             print("🎬 Left drag started - Original duration: \(CMTimeGetSeconds(originalSelectedDurtaion))s")
         } else if sender.state == .changed {
             let offset = point.x - panGestureOriginX
             
-            // ✅ BETTER EDGE DETECTION
-            let minWidth: CGFloat = 20  // Minimum segment width (adjustable)
-            if (offset + minWidth) > targetViewW {
-                print("⚠️ Drag blocked: would make segment too small")
-                return
+            let minWidth: CGFloat = 10
+            
+            if offset >= 0 {
+                if (targetViewW - offset) < minWidth {
+                    print("⚠️ Left drag blocked: segment would be too small")
+                    return
+                }
+            } else {
+                // ✅ SIMPLIFIED: Direct check
+                let offsetSeconds = VLETimeLineConfig.convertToSecond(value: abs(offset))
+                let newStartTimeSeconds = CMTimeGetSeconds(originalGlobalStartTime) - Double(offsetSeconds)
+                
+                if newStartTimeSeconds < 0 {
+                    print("⚠️ Left drag blocked: would go before timeline start")
+                    return
+                }
             }
             
             if offset >= 0 {
-                // Moving start forward
+                // Moving start forward (shorten)
                 if targetView.model.recomputeSelectedDurationOf(originalDuration: originalSelectedDurtaion, offset: -offset) == false {
                     print("❌ Left drag validation failed (forward)")
                     return
@@ -120,13 +130,13 @@ class VLETimeLineRenderTrackDragView: UIView {
                 targetView.model.recomputeSelectedStartTimeOf(originalTime: originalSelectedStartTime, offset: offset)
                 self.delegate?.renderTrackDragView(self, targetView: targetView, leftBorderDragWith: offset, finalWidth: targetViewW - offset)
             } else {
-                // Moving start backward
+                // Moving start backward (extend)
                 if targetView.model.recomputeSelectedDurationOf(originalDuration: originalSelectedDurtaion, offset: abs(offset)) == false {
                     print("❌ Left drag validation failed (backward)")
                     return
                 }
-                targetView.model.recomputeGlobalStartTimeOf(originalTime: originalGlobalStartTime, offset: -abs(offset))
-                targetView.model.recomputeSelectedStartTimeOf(originalTime: originalSelectedStartTime, offset: -abs(offset))
+                targetView.model.recomputeGlobalStartTimeOf(originalTime: originalGlobalStartTime, offset: offset) // offset is negative
+                targetView.model.recomputeSelectedStartTimeOf(originalTime: originalSelectedStartTime, offset: offset)
                 self.delegate?.renderTrackDragView(self, targetView: targetView, leftBorderDragWith: offset, finalWidth: targetViewW + abs(offset))
             }
         } else if sender.state == .ended {
@@ -135,23 +145,50 @@ class VLETimeLineRenderTrackDragView: UIView {
         }
     }
 
-    @objc func rightDragBlockViewGestureAction(sender: UIPanGestureRecognizer) -> Void {
+    @objc func rightDragBlockViewGestureAction(sender: UIPanGestureRecognizer) {
         let point = sender.location(in: self.superview)
+        
         if sender.state == .began {
             panGestureOriginX = point.x
             targetViewW = targetView.bounds.width
             viewW = self.bounds.width
             originalSelectedDurtaion = targetView.model.source.selectedTimeRange.duration
+            
+            print("🎬 Right drag started - Original duration: \(CMTimeGetSeconds(originalSelectedDurtaion))s")
         } else if sender.state == .changed {
             let offset = point.x - panGestureOriginX
+            
+            // ✅ Prevent overlay trigger
+            let maxExtension = targetViewW * 2.0
+            if offset > maxExtension {
+                print("⚠️ Right drag blocked: extension too large, would trigger overlay mode")
+                return
+            }
+            
+            // ✅ Minimum width check
             if abs(offset) > (targetViewW - 10) {
+                print("⚠️ Right drag blocked: segment would be too small")
                 return
             }
+            
+            // ✅ SIMPLIFIED: Source duration check
+            let offsetSeconds = VLETimeLineConfig.convertToSecond(value: offset)
+            let newDurationSeconds = CMTimeGetSeconds(originalSelectedDurtaion) + Double(offsetSeconds)
+            let sourceDurationSeconds = CMTimeGetSeconds(targetView.model.source.duration)
+            
+            if newDurationSeconds > sourceDurationSeconds {
+                print("⚠️ Right drag blocked: would exceed source duration")
+                return
+            }
+            
             if targetView.model.recomputeSelectedDurationOf(originalDuration: originalSelectedDurtaion, offset: offset) == false {
+                print("❌ Right drag validation failed")
                 return
             }
+            
             self.delegate?.renderTrackDragView(self, targetView: targetView, rightBorderDragWith: offset, finalWidth: targetViewW + offset)
         } else if sender.state == .ended {
+            print("✅ Right drag completed")
             self.delegate?.renderTrackDragViewIsDragEnd()
         }
     }
@@ -188,4 +225,26 @@ class VLETimeLineRenderTrackDragView: UIView {
             rightDragBlockView.layer.addSublayer(layer)
         }
     }
+}
+
+extension VLETimeLineConfig {
+    
+    // ✅ Safe pixel to CMTime conversion
+    class func convertToCMTime(fromPixels pixels: CGFloat) -> CMTime {
+        let seconds = convertToSecond(value: pixels)
+        return CMTime(seconds: Double(seconds), preferredTimescale: 600)
+    }
+    
+    // ✅ Safe CMTime to pixel conversion
+    class func convertToPixels(fromCMTime time: CMTime) -> CGFloat {
+        let seconds = Float(CMTimeGetSeconds(time))
+        return convertToPt(value: seconds)
+    }
+    
+    // ✅ Safe offset calculation for drag operations
+    class func pixelOffsetToTimeOffset(_ pixelOffset: CGFloat) -> CMTime {
+           let offsetSeconds = convertToSecond(value: abs(pixelOffset))
+           let timeValue = pixelOffset < 0 ? -Double(offsetSeconds) : Double(offsetSeconds)
+           return CMTime(seconds: timeValue, preferredTimescale: 600)
+       }
 }

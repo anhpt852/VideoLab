@@ -32,21 +32,50 @@ class VLETimeLineRenderTrackView: UIView {
         switch longGress.state {
         case .began:
             let selectedIndex = segmentViewArray.firstIndex(of: longGress.view! as! VLETimeLineRenderTrackSegmentView)
-            self.delegate?.showDragSortRenderTrackSegmentView(with: selectedIndex!)
-            self.delegate?.startDragSortRenderTrackSegmentView(with: longGress)
+            
+            // ✅ FIX: Add validation
+            guard let safeIndex = selectedIndex, safeIndex < segmentViewArray.count else {
+                print("❌ Invalid long press index")
+                return
+            }
+            
+            // ✅ FIX: Only trigger drag sort with intentional gesture
+            let location = longGress.location(in: longGress.view)
+            let viewBounds = longGress.view!.bounds
+            
+            // Check if long press is in center area (not near edges where resize handles are)
+            let centerArea = CGRect(x: viewBounds.width * 0.2,
+                                   y: 0,
+                                   width: viewBounds.width * 0.6,
+                                   height: viewBounds.height)
+            
+            if centerArea.contains(location) {
+                self.delegate?.showDragSortRenderTrackSegmentView(with: safeIndex)
+                self.delegate?.startDragSortRenderTrackSegmentView(with: longGress)
+            } else {
+                print("⚠️ Long press too close to edge, ignoring to prevent accidental drag sort")
+            }
         case .changed:
             self.delegate?.continuedDragSortRenderTrackSegmentView(with: longGress)
         case .ended:
             self.delegate?.endDragSortRenderTrackSegmentView(with: longGress)
         default:
-            print("default")
+            print("Long press gesture state: \(longGress.state.rawValue)")
         }
     }
+
     
     @objc func tapGestureRecognizerAction(tapGesture: UITapGestureRecognizer) {
         let view = tapGesture.view as! VLETimeLineRenderTrackSegmentView
         let index = segmentViewArray.firstIndex(of: view)
-        self.delegate?.showRenderTrackDragView(with: view, index: index!)
+        
+        // ✅ FIX: Add safety check
+        guard let safeIndex = index, safeIndex < segmentViewArray.count else {
+            print("❌ Invalid tap gesture index")
+            return
+        }
+        
+        self.delegate?.showRenderTrackDragView(with: view, index: safeIndex)
     }
 
     required init?(coder: NSCoder) {

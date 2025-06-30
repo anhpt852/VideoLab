@@ -128,15 +128,348 @@ class VLETimeLineViewController: UIViewController {
     }
 
     public func addAudioToSeparateRenderLayerWith(source: Source) {
-        HUD.show(.label("Not yet available"))
-        HUD.hide(afterDelay: 0.5)
+        print("🎵 === ADDING AUDIO TO TIMELINE ===")
+        print("🎵 Source type: \(type(of: source))")
+        
+        // ✅ 1. Load audio source
+        source.load { [weak self] error in
+            guard let self = self else { return }
+            
+            DispatchQueue.main.async {
+                if let error = error {
+                    print("❌ Audio load failed: \(error)")
+                    HUD.show(.label("Failed to load audio"))
+                    HUD.hide(afterDelay: 1.0)
+                    return
+                }
+                
+                print("✅ Audio loaded successfully")
+                print("🎵 Duration: \(CMTimeGetSeconds(source.duration))s")
+                
+                // ✅ 2. Create timeline item model
+                let audioItemModel = VLETimeLineItemModel(with: source, type: .audio)
+                
+                // ✅ 3. Set as separate track (overlay)
+                audioItemModel.isSeparateRenderTrack = true
+                
+                // ✅ 4. Position at current timeline position or start
+                let currentTime = self.getCurrentTimelineTime()
+                audioItemModel.globalStartTime = currentTime
+                audioItemModel.renderLayer.timeRange = CMTimeRange(
+                    start: currentTime,
+                    duration: source.selectedTimeRange.duration
+                )
+                
+                // ✅ 5. Set transform for audio (no visual transform needed, but required)
+                let transform = Transform(center: CGPoint(x: 0.5, y: 0.5), rotation: 0, scale: 1.0)
+                audioItemModel.renderLayer.transform = transform
+                
+                print("🎵 Audio positioned at: \(CMTimeGetSeconds(currentTime))s")
+                
+                // ✅ 6. Generate thumbnail (audio visualization placeholder)
+                self.generateAudioThumbnail(for: audioItemModel) {
+                    // ✅ 7. Add to separate track array
+                    self.stateModel.separateRenderTrackItemModelArray.append(audioItemModel)
+                    
+                    // ✅ 8. Create UI view
+                    let audioTrackView = self.createAudioSeparateRenderTrackView(with: audioItemModel)
+                    self.separateRenderTrackViewArray.append(audioTrackView)
+                    
+                    // ✅ 9. Update timeline
+                    self.stateModel.refreshItemTime()
+                    self.reloadView()
+                    
+                    // ✅ 10. Update playback
+                    VLEMainConcreteMediator.shared.previewTimeLineItem(videoLab: self.buildVideolab())
+                    
+                    // ✅ 11. Show success
+                    HUD.show(.label("🎵 Audio added!"))
+                    HUD.hide(afterDelay: 1.0)
+                    
+                    print("✅ Audio successfully added to timeline")
+                }
+            }
+        }
+    }
+
+
+    // ✅ ADD method để generate audio thumbnail placeholder
+    private func generateAudioThumbnail(for audioModel: VLETimeLineItemModel, completion: @escaping () -> Void) {
+        // ✅ Create audio waveform placeholder image
+        let thumbnailSize = CGSize(width: 60, height: 60)
+        
+        UIGraphicsBeginImageContextWithOptions(thumbnailSize, false, UIScreen.main.scale)
+        guard let context = UIGraphicsGetCurrentContext() else {
+            completion()
+            return
+        }
+        
+        // ✅ Draw audio icon background
+        context.setFillColor(UIColor.systemBlue.cgColor)
+        context.fill(CGRect(origin: .zero, size: thumbnailSize))
+        
+        // ✅ Draw audio wave pattern
+        context.setStrokeColor(UIColor.white.cgColor)
+        context.setLineWidth(2.0)
+        
+        let centerY = thumbnailSize.height / 2
+        let waveCount = 8
+        let waveWidth = thumbnailSize.width / CGFloat(waveCount)
+        
+        for i in 0..<waveCount {
+            let x = CGFloat(i) * waveWidth + waveWidth/2
+            let height = CGFloat.random(in: 10...30)
+            
+            context.move(to: CGPoint(x: x, y: centerY - height/2))
+            context.addLine(to: CGPoint(x: x, y: centerY + height/2))
+            context.strokePath()
+        }
+        
+        // ✅ Add speaker icon
+        let speakerPath = UIBezierPath()
+        speakerPath.move(to: CGPoint(x: 10, y: 20))
+        speakerPath.addLine(to: CGPoint(x: 15, y: 25))
+        speakerPath.addLine(to: CGPoint(x: 20, y: 25))
+        speakerPath.addLine(to: CGPoint(x: 20, y: 35))
+        speakerPath.addLine(to: CGPoint(x: 15, y: 35))
+        speakerPath.addLine(to: CGPoint(x: 10, y: 40))
+        speakerPath.close()
+        
+        context.setFillColor(UIColor.white.cgColor)
+        context.addPath(speakerPath.cgPath)
+        context.fillPath()
+        
+        guard let thumbnailImage = UIGraphicsGetImageFromCurrentImageContext() else {
+            UIGraphicsEndImageContext()
+            completion()
+            return
+        }
+        
+        UIGraphicsEndImageContext()
+        
+        // ✅ Set thumbnail
+        audioModel.thumbnailImageArray = [thumbnailImage]
+        
+        print("🎵 Audio thumbnail generated")
+        completion()
+    }
+
+    // ✅ ADD method để create audio track view
+    private func createAudioSeparateRenderTrackView(with itemModel: VLETimeLineItemModel) -> VLETimeLineSeparateRenderTrackView {
+        print("🎵 Creating audio track view")
+        
+        let audioTrackView = VLETimeLineSeparateRenderTrackView(with: itemModel, delegate: self)
+        
+        // ✅ Position audio track view
+        backScrollView.addSubview(audioTrackView)
+        backScrollView.bringSubviewToFront(audioTrackView)
+        
+        let offset = VLETimeLineConfig.convertToPt(value: itemModel.globalStartTime)
+        let width = VLETimeLineConfig.convertToPt(value: itemModel.source.selectedTimeRange.duration)
+        let dragblockW = audioTrackView.dragBlockWidth
+        
+        let leftOffset = offset - dragblockW + stateModel.fetchScaleFrontMargin()
+        let totalWidth = width + dragblockW * 2
+        
+        // ✅ Position below existing tracks
+        let yOffset = 62 + (separateRenderTrackViewArray.count * 70) // Stack audio tracks
+        
+        audioTrackView.snp.makeConstraints { make in
+            make.top.equalTo(scaleView.snp.bottom).offset(yOffset)
+            make.height.equalTo(62)
+            make.left.equalTo(backScrollView.snp.left).offset(leftOffset)
+            make.width.equalTo(totalWidth)
+        }
+        
+        // ✅ Visual styling for audio
+        audioTrackView.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.3)
+        audioTrackView.layer.borderColor = UIColor.systemBlue.cgColor
+        audioTrackView.layer.borderWidth = 2
+        audioTrackView.layer.cornerRadius = 8
+        
+        print("✅ Audio track view created and positioned")
+        return audioTrackView
     }
 
     public func addStickerToSeparateRenderLayerWith(source: Source) {
-        HUD.show(.label("Not yet available"))
-        HUD.hide(afterDelay: 0.5)
+        print("🎨 === ADDING STICKER TO TIMELINE ===")
+        print("🎨 Source type: \(type(of: source))")
+        
+        // ✅ 1. Load sticker source
+        source.load { [weak self] error in
+            guard let self = self else { return }
+            
+            DispatchQueue.main.async {
+                if let error = error {
+                    print("❌ Sticker load failed: \(error)")
+                    HUD.show(.label("Failed to load sticker"))
+                    HUD.hide(afterDelay: 1.0)
+                    return
+                }
+                
+                print("✅ Sticker loaded successfully")
+                
+                // ✅ 2. Create timeline item model
+                let stickerItemModel = VLETimeLineItemModel(with: source, type: .sticker)
+                
+                // ✅ 3. Set as separate track (overlay)
+                stickerItemModel.isSeparateRenderTrack = true
+                
+                // ✅ 4. Position at current timeline position
+                let currentTime = self.getCurrentTimelineTime()
+                
+                // ✅ 5. Set default duration for sticker (5 seconds or remaining timeline)
+                let mainTrackDuration = self.stateModel.calculateMainTrackDuration()
+                let remainingTime = CMTimeSubtract(mainTrackDuration, currentTime)
+                let stickerDuration = CMTime(seconds: min(5.0, CMTimeGetSeconds(remainingTime)), preferredTimescale: 600)
+                
+                stickerItemModel.source.selectedTimeRange = CMTimeRange(start: CMTime.zero, duration: stickerDuration)
+                stickerItemModel.globalStartTime = currentTime
+                stickerItemModel.renderLayer.timeRange = CMTimeRange(start: currentTime, duration: stickerDuration)
+                
+                // ✅ 6. Set transform for sticker (positioned overlay with scale)
+                let randomX = CGFloat.random(in: 0.2...0.8)
+                let randomY = CGFloat.random(in: 0.2...0.8)
+                let randomScale = Float.random(in: 0.2...0.4)
+                let transform = Transform(center: CGPoint(x: randomX, y: randomY), rotation: 0, scale: randomScale)
+                stickerItemModel.renderLayer.transform = transform
+                
+                print("🎨 Sticker positioned at: \(CMTimeGetSeconds(currentTime))s, duration: \(CMTimeGetSeconds(stickerDuration))s")
+                print("🎨 Transform: center=(\(randomX), \(randomY)), scale=\(randomScale)")
+                
+                // ✅ 7. Generate thumbnail from sticker image
+                self.generateStickerThumbnailSafe(for: stickerItemModel) {
+                    // ✅ 8. Add to separate track array
+                    self.stateModel.separateRenderTrackItemModelArray.append(stickerItemModel)
+                    
+                    // ✅ 9. Create UI view
+                    let stickerTrackView = self.createStickerSeparateRenderTrackView(with: stickerItemModel)
+                    self.separateRenderTrackViewArray.append(stickerTrackView)
+                    
+                    // ✅ 10. Update timeline
+                    self.stateModel.refreshItemTime()
+                    self.reloadView()
+                    
+                    // ✅ 11. Update playback
+                    VLEMainConcreteMediator.shared.previewTimeLineItem(videoLab: self.buildVideolab())
+                    
+                    // ✅ 12. Show success
+                    HUD.show(.label("🎨 Sticker added!"))
+                    HUD.hide(afterDelay: 1.0)
+                    
+                    print("✅ Sticker successfully added to timeline")
+                }
+            }
+        }
     }
     
+    private func generateStickerThumbnail(for stickerModel: VLETimeLineItemModel, completion: @escaping () -> Void) {
+        // ✅ For ImageSource, use the actual image as thumbnail
+        if let imageSource = stickerModel.source as? ImageSource {
+            if let texture = imageSource.texture(at: CMTime.zero) {
+                if let cgImage = texture.texture.toImage() {
+                    let thumbnailImage = UIImage(cgImage: cgImage)
+                    stickerModel.thumbnailImageArray = [thumbnailImage]
+                    print("🎨 Sticker thumbnail generated from image source")
+                    completion()
+                    return
+                }
+            }
+        }
+        
+        // ✅ Fallback: Create placeholder sticker icon
+        let thumbnailSize = CGSize(width: 60, height: 60)
+        
+        UIGraphicsBeginImageContextWithOptions(thumbnailSize, false, UIScreen.main.scale)
+        guard let context = UIGraphicsGetCurrentContext() else {
+            completion()
+            return
+        }
+        
+        // ✅ Draw sticker placeholder background
+        context.setFillColor(UIColor.systemPink.cgColor)
+        context.fill(CGRect(origin: .zero, size: thumbnailSize))
+        
+        // ✅ Draw star shape
+        let center = CGPoint(x: thumbnailSize.width/2, y: thumbnailSize.height/2)
+        let starPath = createStarPath(center: center, radius: 20, points: 5)
+        
+        context.setFillColor(UIColor.white.cgColor)
+        context.addPath(starPath.cgPath)
+        context.fillPath()
+        
+        guard let thumbnailImage = UIGraphicsGetImageFromCurrentImageContext() else {
+            UIGraphicsEndImageContext()
+            completion()
+            return
+        }
+        
+        UIGraphicsEndImageContext()
+        
+        stickerModel.thumbnailImageArray = [thumbnailImage]
+        print("🎨 Sticker placeholder thumbnail generated")
+        completion()
+    }
+
+    // ✅ ADD helper để create star path
+    private func createStarPath(center: CGPoint, radius: CGFloat, points: Int) -> UIBezierPath {
+        let path = UIBezierPath()
+        let angleIncrement = .pi * 2 / CGFloat(points * 2)
+        
+        for i in 0..<(points * 2) {
+            let angle = CGFloat(i) * angleIncrement - .pi / 2
+            let currentRadius = i % 2 == 0 ? radius : radius * 0.5
+            let x = center.x + cos(angle) * currentRadius
+            let y = center.y + sin(angle) * currentRadius
+            
+            if i == 0 {
+                path.move(to: CGPoint(x: x, y: y))
+            } else {
+                path.addLine(to: CGPoint(x: x, y: y))
+            }
+        }
+        
+        path.close()
+        return path
+    }
+
+    // ✅ ADD method để create sticker track view
+    private func createStickerSeparateRenderTrackView(with itemModel: VLETimeLineItemModel) -> VLETimeLineSeparateRenderTrackView {
+        print("🎨 Creating sticker track view")
+        
+        let stickerTrackView = VLETimeLineSeparateRenderTrackView(with: itemModel, delegate: self)
+        
+        // ✅ Position sticker track view
+        backScrollView.addSubview(stickerTrackView)
+        backScrollView.bringSubviewToFront(stickerTrackView)
+        
+        let offset = VLETimeLineConfig.convertToPt(value: itemModel.globalStartTime)
+        let width = VLETimeLineConfig.convertToPt(value: itemModel.source.selectedTimeRange.duration)
+        let dragblockW = stickerTrackView.dragBlockWidth
+        
+        let leftOffset = offset - dragblockW + stateModel.fetchScaleFrontMargin()
+        let totalWidth = width + dragblockW * 2
+        
+        // ✅ Position below existing tracks (stack with audio)
+        let yOffset = 62 + (separateRenderTrackViewArray.count * 70)
+        
+        stickerTrackView.snp.makeConstraints { make in
+            make.top.equalTo(scaleView.snp.bottom).offset(yOffset)
+            make.height.equalTo(62)
+            make.left.equalTo(backScrollView.snp.left).offset(leftOffset)
+            make.width.equalTo(totalWidth)
+        }
+        
+        // ✅ Visual styling for sticker
+        stickerTrackView.backgroundColor = UIColor.systemPink.withAlphaComponent(0.3)
+        stickerTrackView.layer.borderColor = UIColor.systemPink.cgColor
+        stickerTrackView.layer.borderWidth = 2
+        stickerTrackView.layer.cornerRadius = 8
+        
+        print("✅ Sticker track view created and positioned")
+        return stickerTrackView
+    }
+
     // ✅ ADD DEBUG METHODS
     private func debugComposition() {
         print("\n🔍 === TIMELINE DEBUG INFO ===")
@@ -828,33 +1161,13 @@ extension VLETimeLineViewController {
             locationLineView.isHidden = true
             movablyAddAssetButton.isHidden = true
             
-            // ✅ NOTIFY PLAYBACK TO SHOW HINT
             NotificationCenter.default.post(
                 name: Notification.Name(rawValue: VLEConstants.VLETimeLineAssetDidIsEmptyNotification),
                 object: nil
             )
             
-        } else if !hasMainTrack && hasOverlayTrack {
-            // ⚠️ Warning state: Only overlay content
-            scaleView.isHidden = false
-            toolBarView.isHidden = false
-            addAssetButton.isHidden = true
-            backScrollView.isHidden = false
-            renderTrackView.isHidden = false
-            locationLineView.isHidden = false
-            movablyAddAssetButton.isHidden = false
-            
-            // ✅ SHOW WARNING TO USER
-            showMainTrackWarning()
-            
-            // ✅ NOTIFY PLAYBACK
-            NotificationCenter.default.post(
-                name: Notification.Name(rawValue: VLEConstants.VLETimeLineAssetDidIsNonemptyNotification),
-                object: nil
-            )
-            
         } else {
-            // ✅ Normal state
+            // Normal state
             scaleView.isHidden = false
             toolBarView.isHidden = false
             addAssetButton.isHidden = true
@@ -863,20 +1176,16 @@ extension VLETimeLineViewController {
             locationLineView.isHidden = false
             movablyAddAssetButton.isHidden = false
             
-            // ✅ NOTIFY PLAYBACK
+            // ✅ Adjust main track position based on overlay tracks count
+            let overlayTracksHeight = separateRenderTrackViewArray.count * 70
+            renderTrackView.snp.updateConstraints { make in
+                make.top.equalTo(scaleView.snp.bottom).offset(62 + overlayTracksHeight)
+            }
+            
             NotificationCenter.default.post(
                 name: Notification.Name(rawValue: VLEConstants.VLETimeLineAssetDidIsNonemptyNotification),
                 object: nil
             )
-        }
-        
-        // ✅ VISUAL FEEDBACK FOR OVERLAY TRACKS
-        for separateView in separateRenderTrackViewArray {
-            if hasMainTrack {
-                separateView.alpha = 1.0  // Full opacity when main track exists
-            } else {
-                separateView.alpha = 0.7  // Reduced opacity warning
-            }
         }
     }
 
@@ -1036,5 +1345,111 @@ extension VLETimeLineViewController {
         let toolBarView = VLETimeLineToolBarView.init(delegate: self)
         return toolBarView
     }
+    
+    // ✅ SAFE version of generateStickerThumbnail
+        private func generateStickerThumbnailSafe(for stickerModel: VLETimeLineItemModel, completion: @escaping () -> Void) {
+            // ✅ Always create placeholder since we can't easily access Texture content
+            DispatchQueue.global().async {
+                let thumbnailImage = self.createStickerPlaceholderImage()
+                
+                DispatchQueue.main.async {
+                    stickerModel.thumbnailImageArray = [thumbnailImage]
+                    print("🎨 Sticker placeholder thumbnail generated")
+                    completion()
+                }
+            }
+        }
+        
+        private func createStickerPlaceholderImage() -> UIImage {
+            let thumbnailSize = CGSize(width: 60, height: 60)
+            
+            UIGraphicsBeginImageContextWithOptions(thumbnailSize, false, UIScreen.main.scale)
+            
+            // ✅ Use guard let for safer context handling
+            guard let context = UIGraphicsGetCurrentContext() else {
+                UIGraphicsEndImageContext()
+                // Return system image as fallback
+                if #available(iOS 13.0, *) {
+                    return UIImage(systemName: "star.fill") ?? createFallbackStickerImage()
+                } else {
+                    return createFallbackStickerImage()
+                }
+            }
+            
+            // ✅ Draw gradient background
+            let colorSpace = CGColorSpaceCreateDeviceRGB()
+            let colors = [UIColor.systemPink.cgColor, UIColor.systemPurple.cgColor]
+            
+            if let gradient = CGGradient(colorsSpace: colorSpace, colors: colors as CFArray, locations: nil) {
+                context.drawLinearGradient(
+                    gradient,
+                    start: .zero,
+                    end: CGPoint(x: thumbnailSize.width, y: thumbnailSize.height),
+                    options: []
+                )
+            } else {
+                // Fallback solid color
+                context.setFillColor(UIColor.systemPink.cgColor)
+                context.fill(CGRect(origin: .zero, size: thumbnailSize))
+            }
+            
+            // ✅ Draw white star
+            let center = CGPoint(x: thumbnailSize.width/2, y: thumbnailSize.height/2)
+            let starPath = createStarPath(center: center, radius: 20, points: 5)
+            
+            context.setFillColor(UIColor.white.cgColor)
+            context.addPath(starPath.cgPath)
+            context.fillPath()
+            
+            // ✅ Add sparkle effect
+            context.setFillColor(UIColor.white.withAlphaComponent(0.8).cgColor)
+            for _ in 0..<5 {
+                let x = CGFloat.random(in: 5...(thumbnailSize.width-5))
+                let y = CGFloat.random(in: 5...(thumbnailSize.height-5))
+                context.fillEllipse(in: CGRect(x: x, y: y, width: 3, height: 3))
+            }
+            
+            let thumbnailImage = UIGraphicsGetImageFromCurrentImageContext() ?? createFallbackStickerImage()
+            UIGraphicsEndImageContext()
+            
+            return thumbnailImage
+        }
+        
+        // ✅ Create simple fallback image
+        private func createFallbackStickerImage() -> UIImage {
+            let size = CGSize(width: 60, height: 60)
+            UIGraphicsBeginImageContextWithOptions(size, false, UIScreen.main.scale)
+            
+            if let context = UIGraphicsGetCurrentContext() {
+                // Simple pink square with white border
+                context.setFillColor(UIColor.systemPink.cgColor)
+                context.fill(CGRect(origin: .zero, size: size))
+                
+                context.setStrokeColor(UIColor.white.cgColor)
+                context.setLineWidth(4.0)
+                context.stroke(CGRect(origin: .zero, size: size))
+                
+                // Add "S" for Sticker
+                let font = UIFont.boldSystemFont(ofSize: 24)
+                let text = "S"
+                let textSize = text.size(withAttributes: [.font: font])
+                let textRect = CGRect(
+                    x: (size.width - textSize.width) / 2,
+                    y: (size.height - textSize.height) / 2,
+                    width: textSize.width,
+                    height: textSize.height
+                )
+                
+                context.setFillColor(UIColor.white.cgColor)
+                text.draw(in: textRect, withAttributes: [
+                    .font: font,
+                    .foregroundColor: UIColor.white
+                ])
+            }
+            
+            let image = UIGraphicsGetImageFromCurrentImageContext() ?? UIImage()
+            UIGraphicsEndImageContext()
+            return image
+        }
 }
 
