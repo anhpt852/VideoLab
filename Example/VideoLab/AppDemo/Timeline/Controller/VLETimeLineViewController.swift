@@ -511,6 +511,7 @@ class VLETimeLineViewController: UIViewController {
         print("🎬 === BUILDING VIDEOLAB COMPOSITION ===")
         print("📊 Main track items: \(stateModel.renderTrackItemModelArray.count)")
         print("📊 Overlay track items: \(stateModel.separateRenderTrackItemModelArray.count)")
+        print("🎭 Has animation layer: \(stateModel.hasGlobalAnimationLayer())")
         
         // ✅ VALIDATE MAIN TRACK
         if stateModel.renderTrackItemModelArray.isEmpty && stateModel.separateRenderTrackItemModelArray.isEmpty {
@@ -537,8 +538,18 @@ class VLETimeLineViewController: UIViewController {
         composition.renderSize = stateModel.renderSize
         composition.layers = renderLayers
         
+        // ✅ KEY FIX: PRESERVE ANIMATION LAYER FROM STATE MODEL
+        if let animationLayer = stateModel.getGlobalAnimationLayer() {
+            composition.animationLayer = animationLayer
+            print("🎭 ✅ Animation layer applied to composition")
+        } else {
+            print("🎭 ⚠️ No animation layer to apply")
+        }
+        
         let videoLab = VideoLab(renderComposition: composition)
         print("✅ Final composition: \(renderLayers.count) total layers, renderSize: \(composition.renderSize)")
+        print("🎭 Final animation layer: \(composition.animationLayer != nil ? "YES" : "NO")")
+        
         // ✅ CHECK FINAL COMPOSITION:
         let finalPlayerItem = videoLab.makePlayerItem()
         let audioTracks = finalPlayerItem.asset.tracks(withMediaType: .audio)

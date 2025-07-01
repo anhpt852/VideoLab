@@ -13,7 +13,7 @@ class VLEExportConfigResolutionView: UIView{
     let models: [String] = ["360p", "480p", "720p", "1080p", "4K"]
     lazy var titleLabel: UILabel = {
         let label = UILabel.init()
-        label.text = "分辨率（暂不可用）"
+        label.text = "Resolution (Not Available)"
         label.textColor = UIColor.init(hexString: "#FFFFFF")
         label.font = UIFont.boldSystemFont(ofSize: 16)
         return label
@@ -21,7 +21,7 @@ class VLEExportConfigResolutionView: UIView{
     
     lazy var subTitleLabel: UILabel = {
         let label = UILabel.init()
-        label.text = "高清、质量和大小的绝对平衡"
+        label.text = "HD - Perfect balance of quality and size"
         label.textColor = UIColor.init(hexString: "#FFFFFF", alpha: 0.7)
         label.font = UIFont.boldSystemFont(ofSize: 14)
         return label
@@ -97,17 +97,17 @@ class VLEExportConfigResolutionView: UIView{
     func refreshTitleLabelText(value: Float) {
         switch value {
         case 0:
-            subTitleLabel.text = "速度快、占用空间小，质量较差"
+            subTitleLabel.text = "Fast, small size, lower quality" // was: "速度快、占用空间小，质量较差"
         case 0..<1:
-            subTitleLabel.text = "速度快、占用空间小，质量较差"
+            subTitleLabel.text = "Fast, small size, lower quality"
         case 1..<2:
-            subTitleLabel.text = "标准。非常适合于在社交媒体上分享。"
+            subTitleLabel.text = "Standard. Perfect for social media sharing." // was: "标准。非常适合于在社交媒体上分享。"
         case 2..<3:
-            subTitleLabel.text = "高清。质量和大小的绝对平衡。"
+            subTitleLabel.text = "HD. Perfect balance of quality and size." // was: "高清。质量和大小的绝对平衡。"
         case 3..<4:
-            subTitleLabel.text = "全高清。适用于更大的屏幕。"
+            subTitleLabel.text = "Full HD. Suitable for larger screens." // was: "全高清。适用于更大的屏幕。"
         case 4:
-            subTitleLabel.text = "超高清。就像去看电影一样！"
+            subTitleLabel.text = "Ultra HD. Like going to the movies!" // was: "超高清。就像去看电影一样！"
         default:
             subTitleLabel.text = ""
         }

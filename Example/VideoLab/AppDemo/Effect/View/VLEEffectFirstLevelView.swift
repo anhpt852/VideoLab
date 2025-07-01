@@ -122,82 +122,382 @@ class VLEEffectFirstLevelView: UIView {
         )
         self.presentAlert(alertController)
     }
+    
+    private func clearAllTextWithOverlay() {
+        // Clear from timeline
+        clearAllText()
+        
+        // Clear preview overlays
+        removeExistingTextOverlays()
+        
+        HUD.show(.label("🗑️ All text and previews cleared"))
+        HUD.hide(afterDelay: 1.0)
+    }
 
     // MARK: - Text Effects Implementation (Real VideoLab)
     private func handleTextEffects() {
         let alertController = UIAlertController(
-            title: "Text Effects",
-            message: "Select Text Effect Type",
+            title: "📝 Text Effects",
+            message: "Text guaranteed to appear in exported video",
             preferredStyle: .actionSheet
         )
 
-        // Add Text with Animation - Uses VideoLab TextOpacityAnimationLayer
+        // ✅ QUICK TEST - White text on red background
         alertController.addAction(
-            UIAlertAction(title: "Add Animated Text", style: .default) { _ in
-                self.showTextAnimationOptions()
+            UIAlertAction(title: "🚀 Quick Test", style: .default) { _ in
+                self.addGuaranteedText(
+                    text: "VIDEO TITLE",
+                    fontSize: 100,
+                    textColor: .white,
+                    backgroundColor: .red.withAlphaComponent(0.9),
+                    position: "center"
+                )
             }
         )
 
-        // Add Simple Text - Uses VideoLab TextAnimationLayer
+        // ✅ MOVIE TITLE STYLE
         alertController.addAction(
-            UIAlertAction(title: "Add Simple Text", style: .default) { _ in
-                self.showSimpleTextOptions()
+            UIAlertAction(title: "🎬 Movie Title", style: .default) { _ in
+                self.addGuaranteedText(
+                    text: "MOVIE TITLE",
+                    fontSize: 120,
+                    textColor: .white,
+                    backgroundColor: .black.withAlphaComponent(0.7),
+                    position: "center"
+                )
             }
         )
 
-        // Quick Presets
+        // ✅ SUBTITLE STYLE
         alertController.addAction(
-            UIAlertAction(title: "Quick Title", style: .default) { _ in
-                self.addTitleText(text: "Video Title")
+            UIAlertAction(title: "💬 Subtitle", style: .default) { _ in
+                self.addGuaranteedText(
+                    text: "Subtitle text here",
+                    fontSize: 60,
+                    textColor: .white,
+                    backgroundColor: .black.withAlphaComponent(0.8),
+                    position: "bottom"
+                )
             }
         )
 
+        // ✅ CUSTOM TEXT
         alertController.addAction(
-            UIAlertAction(title: "Quick Subtitle", style: .default) { _ in
-                self.addSubtitleText(text: "Video Subtitle")
+            UIAlertAction(title: "✏️ Custom Text", style: .default) { _ in
+                self.showCustomTextInput()
             }
         )
 
+        // ✅ CLEAR ALL
         alertController.addAction(
-            UIAlertAction(title: "Quick Watermark", style: .default) { _ in
-                self.addWatermarkText(text: "@YourBrand")
+            UIAlertAction(title: "🗑️ Clear All Text", style: .destructive) { _ in
+                self.clearAllTextOverlays()
             }
         )
 
-        // Preview Text
-        alertController.addAction(
-            UIAlertAction(title: "👁️ Preview Text", style: .default) { _ in
-                self.showTextPreview()
-            }
-        )
-
-        // Debug Text Layer
-        alertController.addAction(
-            UIAlertAction(title: "🔍 Debug Text Layer", style: .default) { _ in
-                self.debugTextLayer()
-            }
-        )
-
-        // Test Set Animation Layer
-        alertController.addAction(
-            UIAlertAction(title: "🧪 Test Set Text", style: .default) { _ in
-                self.testSetAnimationLayer()
-            }
-        )
-
-        // Export Video with Text - Since AnimationLayer only visible in export
-        alertController.addAction(
-            UIAlertAction(title: "📱 Export Video with Text", style: .default) {
-                _ in
-                self.exportVideoWithText()
-            }
-        )
-
-        alertController.addAction(
-            UIAlertAction(title: "Cancel", style: .cancel)
-        )
+        alertController.addAction(UIAlertAction(title: "Cancel", style: .cancel))
         self.presentAlert(alertController)
     }
+    
+    // ✅ MAIN METHOD - Guaranteed text export:
+    private func addGuaranteedText(
+        text: String,
+        fontSize: CGFloat,
+        textColor: UIColor,
+        backgroundColor: UIColor,
+        position: String
+    ) {
+        guard let timelineViewController = VLEMainConcreteMediator.shared.timelineViewController else {
+            HUD.show(.label("❌ Cannot access timeline"))
+            HUD.hide(afterDelay: 1.0)
+            return
+        }
+
+        print("🎯 === GUARANTEED TEXT EXPORT ===")
+        print("🎯 Text: '\(text)'")
+        print("🎯 Font size: \(fontSize)")
+        print("🎯 Position: \(position)")
+
+        // ✅ Step 1: Create high-quality text image
+        let textImage = createTextImage(
+            text: text,
+            fontSize: fontSize,
+            textColor: textColor,
+            backgroundColor: backgroundColor
+        )
+        
+        print("🖼️ Text image created: \(textImage.size)")
+
+        // ✅ Step 2: Convert to VideoLab source
+        guard let cgImage = textImage.cgImage else {
+            HUD.show(.label("❌ Failed to create text image"))
+            HUD.hide(afterDelay: 1.0)
+            return
+        }
+        
+        let imageSource = ImageSource(cgImage: cgImage)
+
+        // ✅ Step 3: Create RenderLayer with full video duration
+        let videoDuration = timelineViewController.stateModel.calculateMainTrackDuration()
+        let textRenderLayer = RenderLayer(
+            timeRange: CMTimeRange(start: CMTime.zero, duration: videoDuration),
+            source: imageSource
+        )
+
+        // ✅ Step 4: Set position and scale
+        let (positionX, positionY, scale) = getTextPosition(position)
+        let transform = Transform(
+            center: CGPoint(x: positionX, y: positionY),
+            rotation: 0,
+            scale: scale
+        )
+        textRenderLayer.transform = transform
+
+        print("🎯 Transform: center=(\(positionX), \(positionY)), scale=\(scale)")
+
+        // ✅ Step 5: Create timeline item
+        let textItemModel = VLETimeLineItemModel(with: imageSource, type: .sticker)
+        textItemModel.isSeparateRenderTrack = true
+        textItemModel.globalStartTime = CMTime.zero
+        textItemModel.renderLayer = textRenderLayer
+        textItemModel.thumbnailImageArray = [textImage]
+
+        // ✅ Step 6: Add to timeline
+        timelineViewController.stateModel.separateRenderTrackItemModelArray.append(textItemModel)
+
+        // ✅ Step 7: Refresh timeline and preview
+        timelineViewController.stateModel.refreshItemTime()
+        timelineViewController.reloadView()
+
+        VLEMainConcreteMediator.shared.previewTimeLineItem(videoLab: timelineViewController.buildVideolab())
+
+        print("✅ Text overlay added as RenderLayer")
+        HUD.show(.label("✅ Text added - guaranteed export!"))
+        HUD.hide(afterDelay: 2.0)
+    }
+
+    // ✅ Create perfect text image:
+    private func createTextImage(
+        text: String,
+        fontSize: CGFloat,
+        textColor: UIColor,
+        backgroundColor: UIColor
+    ) -> UIImage {
+        
+        let font = UIFont.boldSystemFont(ofSize: fontSize)
+        
+        // ✅ Create attributed string
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.alignment = .center
+        
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: textColor,
+            .paragraphStyle: paragraphStyle
+        ]
+        
+        let attributedString = NSAttributedString(string: text, attributes: attributes)
+        
+        // ✅ Calculate size
+        let maxSize = CGSize(width: 1200, height: 400)
+        let textSize = attributedString.boundingRect(
+            with: maxSize,
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            context: nil
+        ).size
+        
+        // ✅ Add padding for background
+        let padding: CGFloat = 30
+        let imageSize = CGSize(
+            width: textSize.width + padding * 2,
+            height: textSize.height + padding * 2
+        )
+        
+        // ✅ Create high-resolution image (3x for crisp export)
+        let scale: CGFloat = 3.0
+        UIGraphicsBeginImageContextWithOptions(imageSize, false, scale)
+        
+        guard let context = UIGraphicsGetCurrentContext() else {
+            UIGraphicsEndImageContext()
+            return UIImage()
+        }
+        
+        // ✅ Draw background with rounded corners
+        if backgroundColor != .clear {
+            backgroundColor.setFill()
+            let backgroundRect = CGRect(origin: .zero, size: imageSize)
+            let cornerRadius: CGFloat = 15
+            let backgroundPath = UIBezierPath(roundedRect: backgroundRect, cornerRadius: cornerRadius)
+            backgroundPath.fill()
+        }
+        
+        // ✅ Draw text centered
+        let textRect = CGRect(
+            x: padding,
+            y: padding,
+            width: textSize.width,
+            height: textSize.height
+        )
+        
+        attributedString.draw(in: textRect)
+        
+        // ✅ Add text shadow for better visibility
+        context.setShadow(offset: CGSize(width: 2, height: 2), blur: 4.0, color: UIColor.black.withAlphaComponent(0.5).cgColor)
+        attributedString.draw(in: textRect)
+        
+        let image = UIGraphicsGetImageFromCurrentImageContext() ?? UIImage()
+        UIGraphicsEndImageContext()
+        
+        print("🖼️ Text image details:")
+        print("   - Size: \(imageSize)")
+        print("   - Scale: \(scale)x")
+        print("   - Text rect: \(textRect)")
+        
+        return image
+    }
+
+    // ✅ Position calculator:
+    private func getTextPosition(_ position: String) -> (CGFloat, CGFloat, Float) {
+        switch position.lowercased() {
+        case "top":
+            return (0.5, 0.15, 0.4)    // Top center
+        case "center":
+            return (0.5, 0.5, 0.5)     // Center, larger scale
+        case "bottom":
+            return (0.5, 0.85, 0.35)   // Bottom center
+        case "topleft":
+            return (0.2, 0.15, 0.3)    // Top left corner
+        case "topright":
+            return (0.8, 0.15, 0.3)    // Top right corner
+        case "bottomleft":
+            return (0.2, 0.85, 0.3)    // Bottom left corner
+        case "bottomright":
+            return (0.8, 0.85, 0.3)    // Bottom right corner
+        default:
+            return (0.5, 0.5, 0.4)     // Default center
+        }
+    }
+    
+    private func showCustomTextInput() {
+        let alertController = UIAlertController(
+            title: "Custom Text",
+            message: "Enter your text settings",
+            preferredStyle: .alert
+        )
+
+        alertController.addTextField { textField in
+            textField.placeholder = "Enter your text"
+            textField.text = "My Custom Text"
+        }
+
+        alertController.addTextField { textField in
+            textField.placeholder = "Font size (40-150)"
+            textField.keyboardType = .numberPad
+            textField.text = "100"
+        }
+
+        alertController.addTextField { textField in
+            textField.placeholder = "Position (top/center/bottom)"
+            textField.text = "center"
+        }
+
+        // White text on black background
+        alertController.addAction(
+            UIAlertAction(title: "Add White Text", style: .default) { _ in
+                let text = alertController.textFields?[0].text ?? "Default Text"
+                let fontSize = CGFloat(Double(alertController.textFields?[1].text ?? "100") ?? 100)
+                let position = alertController.textFields?[2].text ?? "center"
+                
+                self.addGuaranteedText(
+                    text: text,
+                    fontSize: fontSize,
+                    textColor: .white,
+                    backgroundColor: .black.withAlphaComponent(0.8),
+                    position: position
+                )
+            }
+        )
+
+        // Red text on white background
+        alertController.addAction(
+            UIAlertAction(title: "Add Red Text", style: .default) { _ in
+                let text = alertController.textFields?[0].text ?? "Default Text"
+                let fontSize = CGFloat(Double(alertController.textFields?[1].text ?? "100") ?? 100)
+                let position = alertController.textFields?[2].text ?? "center"
+                
+                self.addGuaranteedText(
+                    text: text,
+                    fontSize: fontSize,
+                    textColor: .red,
+                    backgroundColor: .white.withAlphaComponent(0.9),
+                    position: position
+                )
+            }
+        )
+
+        alertController.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        self.presentAlert(alertController)
+    }
+    
+    private func clearAllTextOverlays() {
+        guard let timelineViewController = VLEMainConcreteMediator.shared.timelineViewController else { return }
+        
+        // Clear text items from separate track (keep other overlays)
+        let originalCount = timelineViewController.stateModel.separateRenderTrackItemModelArray.count
+        timelineViewController.stateModel.separateRenderTrackItemModelArray.removeAll { item in
+            return item.type == .sticker  // Text is stored as sticker type
+        }
+        
+        let removedCount = originalCount - timelineViewController.stateModel.separateRenderTrackItemModelArray.count
+        
+        // Refresh timeline
+        timelineViewController.stateModel.refreshItemTime()
+        timelineViewController.reloadView()
+        VLEMainConcreteMediator.shared.previewTimeLineItem(videoLab: timelineViewController.buildVideolab())
+        
+        print("🗑️ Removed \(removedCount) text overlays")
+        HUD.show(.label("🗑️ Text overlays cleared"))
+        HUD.hide(afterDelay: 1.0)
+    }
+    
+    @objc private func quickExportVideoSaved(_ videoPath: String, didFinishSavingWithError error: Error?, contextInfo: UnsafeRawPointer) {
+        DispatchQueue.main.async {
+            if let error = error {
+                print("❌ Save to Photos failed: \(error.localizedDescription)")
+                HUD.show(.label("❌ Save to Photos failed"))
+            } else {
+                print("✅ Video saved to Photos successfully")
+                HUD.show(.label("🎉 Text video saved! Check Photos app!"))
+            }
+            HUD.hide(afterDelay: 3.0)
+        }
+    }
+    
+    private func clearAllText() {
+        guard let timelineViewController = VLEMainConcreteMediator.shared.timelineViewController else {
+            HUD.show(.label("❌ Cannot access timeline"))
+            HUD.hide(afterDelay: 1.0)
+            return
+        }
+        
+        // ✅ CLEAR FROM STATE MODEL
+        timelineViewController.stateModel.clearGlobalAnimationLayer()
+        
+        // ✅ CLEAR FROM CURRENT COMPOSITION
+        if let currentComposition = getCurrentRenderComposition() {
+            currentComposition.animationLayer = nil
+            print("🗑️ Animation layer cleared from composition")
+        }
+        
+        // ✅ REFRESH PREVIEW
+        refreshVideoPreview()
+        
+        HUD.show(.label("🗑️ All text cleared"))
+        HUD.hide(afterDelay: 1.0)
+        
+        print("🗑️ All text layers cleared")
+    }
+
 
     // MARK: - Filter Effects Implementation (Real VideoLab)
     private func handleFilterEffects() {
@@ -302,44 +602,7 @@ class VLEEffectFirstLevelView: UIView {
 
     // MARK: - Text Animation Layer Implementation (VideoLab Official)
 
-    private func makeTextOpacityAnimationLayer(
-        text: String,
-        fontSize: CGFloat = 72,
-        textColor: UIColor = .white,
-        backgroundColor: UIColor = .clear,
-        position: CGPoint = CGPoint(x: 640, y: 360),
-        alignment: NSTextAlignment = .center,
-        maxWidth: CGFloat = 800
-    ) -> TextOpacityAnimationLayer {
-
-        let paragraphStyle = NSMutableParagraphStyle()
-        paragraphStyle.alignment = alignment
-
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: UIFont.boldSystemFont(ofSize: fontSize),
-            .foregroundColor: textColor,
-            .backgroundColor: backgroundColor,
-            .paragraphStyle: paragraphStyle,
-        ]
-
-        let attributedString = NSAttributedString(
-            string: text,
-            attributes: attributes
-        )
-        let size = attributedString.boundingRect(
-            with: CGSize(width: maxWidth, height: 720),
-            options: .usesLineFragmentOrigin,
-            context: nil
-        ).size
-
-        let layer = TextOpacityAnimationLayer()
-        layer.attributedText = attributedString
-        layer.position = position
-        layer.bounds = CGRect(origin: CGPoint.zero, size: size)
-
-        return layer
-    }
-
+   
     // MARK: - LUT Texture Creation (Fixed with Demo Method)
     private func makeLutTextures() -> [Texture] {
         let lutImageNames = [
@@ -475,71 +738,105 @@ class VLEEffectFirstLevelView: UIView {
         return layer
     }
 
-    // MARK: - Apply Custom Text to Current Composition
-    // Note: AnimationLayer text is only visible in exported video, not in preview
-    // This is VideoLab's default behavior - preview shows video layers only
-    private func applyAnimatedTextToComposition(
-        text: String,
-        fontSize: CGFloat = 72,
-        textColor: UIColor = .white,
-        backgroundColor: UIColor = .clear,
-        positionX: CGFloat = 0.5,  // 0.0 = left, 1.0 = right
-        positionY: CGFloat = 0.5,  // 0.0 = top, 1.0 = bottom
-        alignment: NSTextAlignment = .center
-    ) {
-        guard let currentComposition = getCurrentRenderComposition() else {
-            HUD.show(.label("No active composition"))
-            HUD.hide(afterDelay: 1.0)
+    private func addTextPreviewOverlay(textLayer: TextOpacityAnimationLayer) {
+        guard let playbackVC = VLEMainConcreteMediator.shared.playbackViewController else {
+            print("❌ Cannot access playback view")
             return
         }
-
-        print("🔍 === APPLYING ANIMATED TEXT ===")
-        print("🔍 Text: '\(text)'")
-        print("🔍 Position: (\(positionX), \(positionY))")
-        print("🔍 Composition size: \(currentComposition.renderSize)")
-
-        // Calculate absolute position from relative position
-        let absolutePosition = CGPoint(
-            x: currentComposition.renderSize.width * positionX,
-            y: currentComposition.renderSize.height * positionY
+        
+        print("🎭 Adding text preview overlay...")
+        
+        // ✅ Remove existing text overlays
+        removeExistingTextOverlays()
+        
+        // ✅ Create preview label
+        let previewLabel = UILabel()
+        previewLabel.attributedText = textLayer.attributedText
+        previewLabel.numberOfLines = 0
+        previewLabel.tag = 9999 // Special tag for text overlays
+        
+        // ✅ Add to playback view
+        playbackVC.view.addSubview(previewLabel)
+        
+        // ✅ Convert VideoLab coordinates to UIKit coordinates
+        let videoSize = CGSize(width: 1280, height: 720) // VideoLab render size
+        let playbackViewSize = playbackVC.view.bounds.size
+        
+        // Calculate scale and position
+        let scaleX = playbackViewSize.width / videoSize.width
+        let scaleY = playbackViewSize.height / videoSize.height
+        let scale = min(scaleX, scaleY) // Maintain aspect ratio
+        
+        // VideoLab position (640, 144) to UIKit position
+        let videoLabPosition = textLayer.position
+        let uiKitX = videoLabPosition.x * scale
+        let uiKitY = videoLabPosition.y * scale
+        
+        // Account for letterboxing
+        let scaledVideoWidth = videoSize.width * scale
+        let scaledVideoHeight = videoSize.height * scale
+        let xOffset = (playbackViewSize.width - scaledVideoWidth) / 2
+        let yOffset = (playbackViewSize.height - scaledVideoHeight) / 2
+        
+        let finalX = uiKitX + xOffset
+        let finalY = uiKitY + yOffset
+        
+        // ✅ Set frame
+        let textBounds = textLayer.bounds
+        let scaledWidth = textBounds.width * scale
+        let scaledHeight = textBounds.height * scale
+        
+        previewLabel.frame = CGRect(
+            x: finalX - scaledWidth/2,
+            y: finalY - scaledHeight/2,
+            width: scaledWidth,
+            height: scaledHeight
         )
-
-        print("🔍 Absolute position: \(absolutePosition)")
-
-        let textLayer = makeTextOpacityAnimationLayer(
-            text: text,
-            fontSize: fontSize,
-            textColor: textColor,
-            backgroundColor: backgroundColor,
-            position: absolutePosition,
-            alignment: alignment,
-            maxWidth: currentComposition.renderSize.width * 0.8
-        )
-
-        print("🔍 Created text layer: \(textLayer)")
-        print("🔍 Text layer bounds: \(textLayer.bounds)")
-        print("🔍 Text layer position: \(textLayer.position)")
-
-        // Clear previous animation layer
-        currentComposition.animationLayer = nil
-
-        // Set new animation layer
-        currentComposition.animationLayer = textLayer
-
-        // Verify it was set
-        if currentComposition.animationLayer != nil {
-            print("✅ Animation layer set successfully")
-        } else {
-            print("❌ Failed to set animation layer")
+        
+        // ✅ Visual styling
+        previewLabel.layer.shadowColor = UIColor.black.cgColor
+        previewLabel.layer.shadowOffset = CGSize(width: 1, height: 1)
+        previewLabel.layer.shadowOpacity = 0.8
+        previewLabel.layer.shadowRadius = 2
+        previewLabel.backgroundColor = UIColor.clear
+        
+        // ✅ Animation
+        previewLabel.alpha = 0
+        UIView.animate(withDuration: 0.3) {
+            previewLabel.alpha = 1.0
         }
-
-        refreshVideoPreview()
-
-        HUD.show(
-            .label("✅ Animated text applied! Use 'Export Video' to see text.")
-        )
-        HUD.hide(afterDelay: 2.0)
+        
+        print("🎭 Text preview overlay added at (\(finalX), \(finalY))")
+        print("🎭 Overlay size: \(scaledWidth) x \(scaledHeight)")
+        
+        // ✅ Auto-remove after delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10.0) {
+            self.removeTextOverlay(previewLabel)
+        }
     }
+
+    private func removeExistingTextOverlays() {
+        guard let playbackVC = VLEMainConcreteMediator.shared.playbackViewController else { return }
+        
+        // Remove all views with text overlay tag
+        playbackVC.view.subviews.forEach { subview in
+            if subview.tag == 9999 {
+                subview.removeFromSuperview()
+            }
+        }
+        
+        print("🗑️ Existing text overlays removed")
+    }
+
+    private func removeTextOverlay(_ overlay: UILabel) {
+        UIView.animate(withDuration: 0.3, animations: {
+            overlay.alpha = 0
+        }) { _ in
+            overlay.removeFromSuperview()
+            print("🗑️ Text overlay auto-removed")
+        }
+    }
+    
 
     private func applySimpleTextToComposition(
         text: String,
@@ -577,10 +874,18 @@ class VLEEffectFirstLevelView: UIView {
 
         print("🔍 Created simple text layer: \(textLayer)")
 
-        // Clear previous animation layer
-        currentComposition.animationLayer = nil
-
-        // Set new animation layer
+        // ✅ KEY FIX: LƯU VÀO STATE MODEL
+        guard let timelineViewController = VLEMainConcreteMediator.shared.timelineViewController else {
+            print("❌ Cannot access timeline view controller")
+            HUD.show(.label("❌ Cannot access timeline"))
+            HUD.hide(afterDelay: 1.0)
+            return
+        }
+        
+        // ✅ LƯU VÀO STATE MODEL
+        timelineViewController.stateModel.setGlobalAnimationLayer(textLayer)
+        
+        // ✅ SET VÀO CURRENT COMPOSITION
         currentComposition.animationLayer = textLayer
 
         // Verify it was set
@@ -590,10 +895,11 @@ class VLEEffectFirstLevelView: UIView {
             print("❌ Failed to set simple text layer")
         }
 
+        // ✅ REFRESH PREVIEW
         refreshVideoPreview()
 
         HUD.show(
-            .label("✅ Simple text applied! Use 'Export Video' to see text.")
+            .label("✅ Simple text applied! Should be visible in preview and export.")
         )
         HUD.hide(afterDelay: 2.0)
     }
@@ -698,17 +1004,6 @@ class VLEEffectFirstLevelView: UIView {
                 }
             }
         }
-    }
-    private func addTitleText(text: String) {
-        applyAnimatedTextToComposition(
-            text: text,
-            fontSize: 96,
-            textColor: .white,
-            backgroundColor: .black.withAlphaComponent(0.5),
-            positionX: 0.5,
-            positionY: 0.2,
-            alignment: .center
-        )
     }
 
     private func addSubtitleText(text: String) {
@@ -1115,6 +1410,13 @@ class VLEEffectFirstLevelView: UIView {
 
     // MARK: - Debug Text Layer
     private func debugTextLayer() {
+        guard let timelineViewController = VLEMainConcreteMediator.shared.timelineViewController else {
+            print("❌ No timeline controller")
+            HUD.show(.label("❌ No timeline controller"))
+            HUD.hide(afterDelay: 1.0)
+            return
+        }
+        
         guard let currentComposition = getCurrentRenderComposition() else {
             print("❌ No composition found")
             HUD.show(.label("❌ No composition found"))
@@ -1122,86 +1424,49 @@ class VLEEffectFirstLevelView: UIView {
             return
         }
 
-        print("🔍 === DEBUG TEXT LAYER ===")
+        print("🔍 === ENHANCED TEXT LAYER DEBUG ===")
         print("🔍 Composition: \(currentComposition)")
         print("🔍 Render size: \(currentComposition.renderSize)")
-        print(
-            "🔍 Animation layer: \(String(describing: currentComposition.animationLayer))"
-        )
+        print("🔍 Current composition animation layer: \(String(describing: currentComposition.animationLayer))")
+        print("🔍 State model animation layer: \(String(describing: timelineViewController.stateModel.getGlobalAnimationLayer()))")
 
         if let animLayer = currentComposition.animationLayer {
-            print("✅ Animation layer EXISTS")
+            print("✅ Current composition HAS animation layer")
             print("🔍   - Type: \(type(of: animLayer))")
             print("🔍   - Frame: \(animLayer.frame)")
             print("🔍   - Position: \(animLayer.position)")
             print("🔍   - Bounds: \(animLayer.bounds)")
 
             if let textLayer = animLayer as? TextOpacityAnimationLayer {
-                print(
-                    "🔍   - Text content: '\(textLayer.attributedText.string)'"
-                )
+                print("🔍   - Text content: '\(textLayer.attributedText.string)'")
                 HUD.show(.label("✅ Found TextOpacityAnimationLayer"))
             } else if let textLayer = animLayer as? TextAnimationLayer {
-                print(
-                    "🔍   - Text content: '\(textLayer.attributedText.string)'"
-                )
+                print("🔍   - Text content: '\(textLayer.attributedText.string)'")
                 HUD.show(.label("✅ Found TextAnimationLayer"))
             } else {
                 print("🔍   - Unknown layer type")
                 HUD.show(.label("⚠️ Unknown animation layer type"))
             }
         } else {
-            print("❌ Animation layer is NIL")
-            HUD.show(.label("❌ No animation layer found"))
+            print("❌ Current composition animation layer is NIL")
+            HUD.show(.label("❌ No animation layer in composition"))
+        }
+        
+        if let stateAnimLayer = timelineViewController.stateModel.getGlobalAnimationLayer() {
+            print("✅ State model HAS animation layer")
+            print("🔍   - Type: \(type(of: stateAnimLayer))")
+            if let textLayer = stateAnimLayer as? TextOpacityAnimationLayer {
+                print("🔍   - State text content: '\(textLayer.attributedText.string)'")
+            } else if let textLayer = stateAnimLayer as? TextAnimationLayer {
+                print("🔍   - State text content: '\(textLayer.attributedText.string)'")
+            }
+        } else {
+            print("❌ State model animation layer is NIL")
         }
 
+        print("🔍 === END ENHANCED DEBUG ===")
         HUD.hide(afterDelay: 3.0)
     }
-
-    private func testSetAnimationLayer() {
-        guard let currentComposition = getCurrentRenderComposition() else {
-            print("❌ No composition")
-            HUD.show(.label("❌ No composition"))
-            HUD.hide(afterDelay: 1.0)
-            return
-        }
-
-        print("🔍 Testing set animation layer...")
-
-        // Create simple test layer
-        let testLayer = makeTextOpacityAnimationLayer(
-            text: "TEST TEXT - \(Date())",
-            fontSize: 64,
-            textColor: .white,
-            backgroundColor: .red,
-            position: CGPoint(x: 640, y: 360),
-            alignment: .center
-        )
-
-        print("🔍 Created test layer: \(testLayer)")
-        print("🔍 Test layer text: '\(testLayer.attributedText.string)'")
-
-        currentComposition.animationLayer = testLayer
-
-        print(
-            "🔍 After setting - animationLayer: \(String(describing: currentComposition.animationLayer))"
-        )
-
-        // Immediate check
-        if currentComposition.animationLayer != nil {
-            print("✅ Animation layer set successfully")
-            HUD.show(.label("✅ Test text layer created"))
-
-            // Also refresh preview
-            refreshVideoPreview()
-        } else {
-            print("❌ Animation layer still nil")
-            HUD.show(.label("❌ Failed to set test layer"))
-        }
-
-        HUD.hide(afterDelay: 2.0)
-    }
-
     // MARK: - UI Helper Methods
 
     private func presentAlert(_ alertController: UIAlertController) {
@@ -1308,101 +1573,6 @@ class VLEEffectFirstLevelView: UIView {
 
     // MARK: - Text Animation Options UI
 
-    private func showTextAnimationOptions() {
-        let alertController = UIAlertController(
-            title: "Add Animated Text",
-            message: "Configure animated text properties",
-            preferredStyle: .alert
-        )
-
-        // Text content
-        alertController.addTextField { textField in
-            textField.placeholder = "Enter text content"
-            textField.text = "Hello VideoLab!"
-        }
-
-        // Font size
-        alertController.addTextField { textField in
-            textField.placeholder = "Font size (default: 72)"
-            textField.keyboardType = .numberPad
-            textField.text = "72"
-        }
-
-        // Position Y (vertical)
-        alertController.addTextField { textField in
-            textField.placeholder = "Vertical position (0.0-1.0, default: 0.5)"
-            textField.keyboardType = .decimalPad
-            textField.text = "0.5"
-        }
-
-        alertController.addAction(
-            UIAlertAction(title: "Add White Text", style: .default) { _ in
-                let text = alertController.textFields?[0].text ?? "Default Text"
-                let fontSize = CGFloat(
-                    Double(alertController.textFields?[1].text ?? "72") ?? 72
-                )
-                let positionY = CGFloat(
-                    Double(alertController.textFields?[2].text ?? "0.5") ?? 0.5
-                )
-
-                self.applyAnimatedTextToComposition(
-                    text: text,
-                    fontSize: fontSize,
-                    textColor: .white,
-                    backgroundColor: .clear,
-                    positionX: 0.5,
-                    positionY: positionY,
-                    alignment: .center
-                )
-            }
-        )
-
-        alertController.addAction(
-            UIAlertAction(title: "Add Red Text", style: .default) { _ in
-                let text = alertController.textFields?[0].text ?? "Default Text"
-                let fontSize = CGFloat(
-                    Double(alertController.textFields?[1].text ?? "72") ?? 72
-                )
-                let positionY = CGFloat(
-                    Double(alertController.textFields?[2].text ?? "0.5") ?? 0.5
-                )
-
-                self.applyAnimatedTextToComposition(
-                    text: text,
-                    fontSize: fontSize,
-                    textColor: .red,
-                    backgroundColor: .white.withAlphaComponent(0.8),
-                    positionX: 0.5,
-                    positionY: positionY,
-                    alignment: .center
-                )
-            }
-        )
-
-        alertController.addAction(
-            UIAlertAction(title: "Add Bottom Title", style: .default) { _ in
-                let text = alertController.textFields?[0].text ?? "Default Text"
-                let fontSize = CGFloat(
-                    Double(alertController.textFields?[1].text ?? "96") ?? 96
-                )
-
-                self.applyAnimatedTextToComposition(
-                    text: text,
-                    fontSize: fontSize,
-                    textColor: .white,
-                    backgroundColor: .black.withAlphaComponent(0.7),
-                    positionX: 0.5,
-                    positionY: 0.9,
-                    alignment: .center
-                )
-            }
-        )
-
-        alertController.addAction(
-            UIAlertAction(title: "Cancel", style: .cancel)
-        )
-        self.presentAlert(alertController)
-    }
 
     private func showSimpleTextOptions() {
         let alertController = UIAlertController(

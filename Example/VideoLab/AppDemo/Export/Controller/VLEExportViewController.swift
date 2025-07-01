@@ -89,42 +89,182 @@ extension VLEExportViewController: VLEExportSaveViewDelegate {
 extension VLEExportViewController {
 
     func exportVideo() {
+        print("🎬 === STARTING EXPORT PROCESS ===")
+        
         guard let documentDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
+            print("❌ Cannot access document directory")
+            HUD.hide()
+            HUD.show(.label("Cannot access document directory")) // was: "无法访问文档目录"
+            HUD.hide(afterDelay: 2.0)
             return
         }
 
-        let outputURL = documentDirectory.appendingPathComponent("demo.mp4")
+        let timestamp = Int(Date().timeIntervalSince1970)
+        let outputURL = documentDirectory.appendingPathComponent("exported_video_\(timestamp).mp4")
+        
+        // ✅ Cleanup existing file
         if FileManager.default.fileExists(atPath: outputURL.path) {
             do {
                 try FileManager.default.removeItem(at: outputURL)
+                print("✅ Cleaned up existing file")
             } catch {
+                print("⚠️ Could not remove existing file: \(error)")
             }
         }
 
-        if let videoLab = VLEMainConcreteMediator.shared.buildCurrentTimeLineItemToExport() {
-            HUD.show(.label("正在导出至本地，请稍后！"))
-            self.exportSession = videoLab.makeExportSession(presetName: AVAssetExportPresetHighestQuality, outputURL: outputURL)
-            self.exportSession?.exportAsynchronously(completionHandler: {
-                switch self.exportSession?.status {
+        // ✅ Build VideoLab composition
+        guard let videoLab = VLEMainConcreteMediator.shared.buildCurrentTimeLineItemToExport() else {
+            print("❌ Cannot build VideoLab composition")
+            HUD.hide()
+            HUD.show(.label("Cannot build video composition")) // was: "无法构建视频组合"
+            HUD.hide(afterDelay: 2.0)
+            return
+        }
+        
+        print("✅ VideoLab composition built successfully")
+        
+        // ✅ Debug composition
+        let composition = videoLab.renderComposition
+        print("🔍 Composition layers: \(composition.layers.count)")
+        print("🔍 Render size: \(composition.renderSize)")
+        print("🔍 Has animation layer: \(composition.animationLayer != nil)")
+        
+        // ✅ Check if composition is valid
+        if composition.layers.isEmpty {
+            print("❌ Empty composition - no layers to export")
+            HUD.hide()
+            HUD.show(.label("No content to export")) // was: "没有内容可导出"
+            HUD.hide(afterDelay: 2.0)
+            return
+        }
+
+        // ✅ Create export session
+        self.exportSession = videoLab.makeExportSession(
+            presetName: AVAssetExportPresetMediumQuality, // ← Use Medium instead of Highest for better compatibility
+            outputURL: outputURL
+        )
+        
+        guard let exportSession = self.exportSession else {
+            print("❌ Cannot create export session")
+            HUD.hide()
+            HUD.show(.label("Cannot create export session")) // was: "无法创建导出会话"
+            HUD.hide(afterDelay: 2.0)
+            return
+        }
+        
+        // ✅ Configure export session
+        exportSession.outputFileType = AVFileType.mp4
+        exportSession.shouldOptimizeForNetworkUse = true
+        
+        print("🎬 Export session created")
+        print("📁 Output URL: \(outputURL)")
+        print("🎛️ Preset: \(exportSession.presetName)")
+        
+        // ✅ Show progress HUD
+        HUD.show(.label("Exporting video...")) // was: "正在导出视频..."
+        
+        // ✅ Start export with timeout protection
+        let exportStartTime = Date()
+        
+        exportSession.exportAsynchronously { [weak self] in
+            guard let self = self else { return }
+            
+            let exportDuration = Date().timeIntervalSince(exportStartTime)
+            print("⏱️ Export completed in \(exportDuration) seconds")
+            
+            DispatchQueue.main.async {
+                HUD.hide()
+                
+                switch exportSession.status {
                 case .completed:
-                    self.saveFileToAlbum(outputURL)
-                    DispatchQueue.main.async {
-                        HUD.hide()
-                        HUD.show(.label("导出成功!"))
-                        HUD.hide(animated: true) { _ in
-                            self.dismiss(animated: true)
+                    print("✅ EXPORT SUCCESSFUL!")
+                    print("📁 Final file: \(outputURL)")
+                    
+                    // ✅ Verify file exists and has content
+                    if FileManager.default.fileExists(atPath: outputURL.path) {
+                        do {
+                            let fileSize = try FileManager.default.attributesOfItem(atPath: outputURL.path)[.size] as? Int64 ?? 0
+                            print("📦 File size: \(fileSize) bytes")
+                            
+                            if fileSize > 0 {
+                                // ✅ Save to Photos Library
+                                self.saveToPhotosLibrary(outputURL) { success in
+                                    if success {
+                                        HUD.show(.label("✅ Export successful! Saved to Photos")) // was: "✅ 导出成功！已保存到相册"
+                                        HUD.hide(afterDelay: 2.0) {_ in
+                                            self.dismiss(animated: true)
+                                        }
+                                    } else {
+                                        HUD.show(.label("⚠️ Export successful, but failed to save to Photos")) // was: "⚠️ 导出成功，但保存到相册失败"
+                                        HUD.hide(afterDelay: 2.0)
+                                    }
+                                }
+                            } else {
+                                print("❌ Export file is empty")
+                                HUD.show(.label("❌ Export file is empty")) // was: "❌ 导出文件为空"
+                                HUD.hide(afterDelay: 2.0)
+                            }
+                        } catch {
+                            print("❌ Cannot check file attributes: \(error)")
+                            HUD.show(.label("❌ Cannot verify export file")) // was: "❌ 无法验证导出文件"
+                            HUD.hide(afterDelay: 2.0)
                         }
+                    } else {
+                        print("❌ Export file does not exist")
+                        HUD.show(.label("❌ Export file does not exist")) // was: "❌ 导出文件不存在"
+                        HUD.hide(afterDelay: 2.0)
                     }
-                case .failed, .cancelled:
-                    DispatchQueue.main.async {
-                        HUD.hide()
-                        HUD.show(.label("导出失败!"))
-                        HUD.hide()
+                    
+                case .failed:
+                    print("❌ EXPORT FAILED!")
+                    if let error = exportSession.error {
+                        print("❌ Export error: \(error.localizedDescription)")
+                        print("❌ Error domain: \(error._domain)")
+                        print("❌ Error code: \(error._code)")
                     }
+                    HUD.show(.label("❌ Export failed: \(exportSession.error?.localizedDescription ?? "Unknown error")")) // was: "❌ 导出失败: \(exportSession.error?.localizedDescription ?? "未知错误")"
+                    HUD.hide(afterDelay: 3.0)
+                    
+                case .cancelled:
+                    print("⚠️ EXPORT CANCELLED")
+                    HUD.show(.label("⚠️ Export cancelled")) // was: "⚠️ 导出已取消"
+                    HUD.hide(afterDelay: 1.0)
+                    
                 default:
-                    print("export")
+                    print("🔍 Export status: \(exportSession.status.rawValue)")
+                    HUD.show(.label("🔍 Unknown export status")) // was: "🔍 导出状态未知"
+                    HUD.hide(afterDelay: 2.0)
                 }
-            })
+            }
+        }
+        
+        // ✅ Add timeout protection (30 seconds)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 30.0) {
+            if exportSession.status == .exporting {
+                print("⏰ Export timeout - cancelling")
+                exportSession.cancelExport()
+                HUD.hide()
+                HUD.show(.label("⏰ Export timeout")) // was: "⏰ 导出超时"
+                HUD.hide(afterDelay: 2.0)
+            }
+        }
+        
+        print("🎬 === EXPORT PROCESS STARTED ===")
+    }
+    
+    private func saveToPhotosLibrary(_ videoURL: URL, completion: @escaping (Bool) -> Void) {
+        PHPhotoLibrary.shared().performChanges({
+            PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: videoURL)
+        }) { (saved, error) in
+            DispatchQueue.main.async {
+                if let error = error {
+                    print("❌ Save to Photos failed: \(error.localizedDescription)")
+                    completion(false)
+                } else {
+                    print("✅ Video saved to Photos successfully")
+                    completion(true)
+                }
+            }
         }
     }
 

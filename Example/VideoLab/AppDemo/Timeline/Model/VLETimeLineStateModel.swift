@@ -19,6 +19,8 @@ class VLETimeLineStateModel {
     var currentSelectedItemModel: VLETimeLineItemModel?
     var currentSelectedIndex: Int?
     
+    var globalAnimationLayer: CALayer?
+    
     private var pendingOverlayScale: Float?
     // ✅ ADD NEW PROPERTIES HERE
    private var pendingOverlayPosition: CGPoint?
@@ -523,4 +525,23 @@ class VLETimeLineStateModel {
         }
         print("🔍 === END VALIDATION ===")
     }
+    
+    // ✅ THÊM METHODS ĐỂ QUẢN LÝ ANIMATION LAYER
+        func setGlobalAnimationLayer(_ layer: CALayer?) {
+            globalAnimationLayer = layer
+            print("🎭 Global animation layer set: \(layer != nil ? "YES" : "NO")")
+        }
+        
+        func getGlobalAnimationLayer() -> CALayer? {
+            return globalAnimationLayer
+        }
+        
+        func clearGlobalAnimationLayer() {
+            globalAnimationLayer = nil
+            print("🎭 Global animation layer cleared")
+        }
+        
+        func hasGlobalAnimationLayer() -> Bool {
+            return globalAnimationLayer != nil
+        }
 }
