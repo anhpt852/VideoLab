@@ -138,45 +138,48 @@ class VLEEffectFirstLevelView: UIView {
     private func handleTextEffects() {
         let alertController = UIAlertController(
             title: "📝 Text Effects",
-            message: "Text guaranteed to appear in exported video",
+            message: "Text will appear as a track on timeline",
             preferredStyle: .actionSheet
         )
 
-        // ✅ QUICK TEST - White text on red background
+        // ✅ QUICK TEST
         alertController.addAction(
             UIAlertAction(title: "🚀 Quick Test", style: .default) { _ in
-                self.addGuaranteedText(
+                self.addTextToTimeline(
                     text: "VIDEO TITLE",
                     fontSize: 100,
                     textColor: .white,
                     backgroundColor: .red.withAlphaComponent(0.9),
-                    position: "center"
+                    position: "center",
+                    duration: 5.0
                 )
             }
         )
 
-        // ✅ MOVIE TITLE STYLE
+        // ✅ MOVIE TITLE
         alertController.addAction(
             UIAlertAction(title: "🎬 Movie Title", style: .default) { _ in
-                self.addGuaranteedText(
+                self.addTextToTimeline(
                     text: "MOVIE TITLE",
                     fontSize: 120,
                     textColor: .white,
                     backgroundColor: .black.withAlphaComponent(0.7),
-                    position: "center"
+                    position: "center",
+                    duration: 3.0
                 )
             }
         )
 
-        // ✅ SUBTITLE STYLE
+        // ✅ SUBTITLE
         alertController.addAction(
             UIAlertAction(title: "💬 Subtitle", style: .default) { _ in
-                self.addGuaranteedText(
+                self.addTextToTimeline(
                     text: "Subtitle text here",
                     fontSize: 60,
                     textColor: .white,
                     backgroundColor: .black.withAlphaComponent(0.8),
-                    position: "bottom"
+                    position: "bottom",
+                    duration: 4.0
                 )
             }
         )
@@ -191,12 +194,275 @@ class VLEEffectFirstLevelView: UIView {
         // ✅ CLEAR ALL
         alertController.addAction(
             UIAlertAction(title: "🗑️ Clear All Text", style: .destructive) { _ in
-                self.clearAllTextOverlays()
+                self.clearAllTextTracks()
             }
         )
 
         alertController.addAction(UIAlertAction(title: "Cancel", style: .cancel))
         self.presentAlert(alertController)
+    }
+    
+    private func addTextToTimeline(
+        text: String,
+        fontSize: CGFloat,
+        textColor: UIColor,
+        backgroundColor: UIColor,
+        position: String,
+        duration: Double
+    ) {
+        guard let timelineViewController = VLEMainConcreteMediator.shared.timelineViewController else {
+            HUD.show(.label("❌ Cannot access timeline"))
+            HUD.hide(afterDelay: 1.0)
+            return
+        }
+
+        print("📝 === ADDING TEXT TO TIMELINE ===")
+        print("📝 Text: '\(text)'")
+        print("📝 Duration: \(duration)s")
+        print("📝 Position: \(position)")
+
+        // ✅ 1. Create high-quality text image
+        let textImage = createTextImage(
+            text: text,
+            fontSize: fontSize,
+            textColor: textColor,
+            backgroundColor: backgroundColor
+        )
+        
+        print("🖼️ Text image created: \(textImage.size)")
+
+        // ✅ 2. Convert to VideoLab ImageSource
+        guard let cgImage = textImage.cgImage else {
+            HUD.show(.label("❌ Failed to create text image"))
+            HUD.hide(afterDelay: 1.0)
+            return
+        }
+        
+        let imageSource = ImageSource(cgImage: cgImage)
+
+        // ✅ 3. Load source first
+        imageSource.load { [weak self] error in
+            guard let self = self else { return }
+            
+            DispatchQueue.main.async {
+                if let error = error {
+                    print("❌ Text source load failed: \(error)")
+                    HUD.show(.label("❌ Failed to load text"))
+                    HUD.hide(afterDelay: 1.0)
+                    return
+                }
+
+                // ✅ 4. Create timeline item model for TEXT type
+                let textItemModel = VLETimeLineItemModel(with: imageSource, type: .text)
+                
+                // ✅ 5. Set as separate track (overlay)
+                textItemModel.isSeparateRenderTrack = true
+                
+                // ✅ 6. Position at current timeline time
+                let currentTime = self.getCurrentTimelineTime()
+                let textDuration = CMTime(seconds: duration, preferredTimescale: 600)
+                
+                textItemModel.globalStartTime = currentTime
+                textItemModel.source.selectedTimeRange = CMTimeRange(start: CMTime.zero, duration: textDuration)
+                textItemModel.renderLayer.timeRange = CMTimeRange(start: currentTime, duration: textDuration)
+                
+                // ✅ 7. Set position and scale based on text position
+                let (positionX, positionY, scale) = self.getTextPosition(position)
+                let transform = Transform(
+                    center: CGPoint(x: positionX, y: positionY),
+                    rotation: 0,
+                    scale: scale
+                )
+                textItemModel.renderLayer.transform = transform
+
+                print("📝 Transform: center=(\(positionX), \(positionY)), scale=\(scale)")
+
+                // ✅ 8. Set thumbnail
+                textItemModel.thumbnailImageArray = [textImage]
+
+                // ✅ 9. Add to timeline separate track
+                timelineViewController.stateModel.separateRenderTrackItemModelArray.append(textItemModel)
+
+                // ✅ 10. Create UI track view
+                let textTrackView = self.createTextSeparateRenderTrackView(with: textItemModel)
+                timelineViewController.separateRenderTrackViewArray.append(textTrackView)
+
+                // ✅ 11. Update timeline
+                timelineViewController.stateModel.refreshItemTime()
+                timelineViewController.reloadView()
+
+                // ✅ 12. Update playback
+                VLEMainConcreteMediator.shared.previewTimeLineItem(videoLab: timelineViewController.buildVideolab())
+
+                print("✅ Text track added to timeline successfully")
+                HUD.show(.label("📝 Text track added!"))
+                HUD.hide(afterDelay: 1.0)
+            }
+        }
+    }
+    
+    private func getCurrentTimelineTime() -> CMTime {
+        guard let playbackVC = VLEMainConcreteMediator.shared.playbackViewController,
+              let player = playbackVC.player else {
+            return CMTime.zero
+        }
+        
+        return player.currentTime()
+    }
+    
+    private func createStickerSeparateRenderTrackView(with itemModel: VLETimeLineItemModel) -> VLETimeLineSeparateRenderTrackView {
+        guard let timelineViewController = VLEMainConcreteMediator.shared.timelineViewController else {
+            fatalError("Cannot access timeline controller")
+        }
+        
+        print("🎨 === CREATING STICKER TRACK VIEW (ENHANCED) ===")
+        print("🎨 Current separate tracks: \(timelineViewController.separateRenderTrackViewArray.count)")
+        
+        let stickerTrackView = VLETimeLineSeparateRenderTrackView(with: itemModel, delegate: timelineViewController)
+        
+        // ✅ CRITICAL: Add to scroll view first
+        timelineViewController.backScrollView.addSubview(stickerTrackView)
+        
+        let offset = VLETimeLineConfig.convertToPt(value: itemModel.globalStartTime)
+        let width = VLETimeLineConfig.convertToPt(value: itemModel.source.selectedTimeRange.duration)
+        let dragblockW = stickerTrackView.dragBlockWidth
+        
+        let leftOffset = offset - dragblockW + timelineViewController.stateModel.fetchScaleFrontMargin()
+        let totalWidth = width + dragblockW * 2
+        
+        // ✅ FIX: Calculate Y position properly with existing tracks
+        let baseYOffset = 62
+        let trackHeight = 70
+        let currentTrackIndex = timelineViewController.separateRenderTrackViewArray.count
+        let yOffset = baseYOffset + (currentTrackIndex * trackHeight)
+        
+        print("🎨 Positioning - Y offset: \(yOffset), Track index: \(currentTrackIndex)")
+        print("🎨 Left offset: \(leftOffset), Width: \(totalWidth)")
+        
+        // ✅ CRITICAL: Set constraints properly
+        stickerTrackView.snp.makeConstraints { make in
+            make.top.equalTo(timelineViewController.scaleView.snp.bottom).offset(yOffset)
+            make.height.equalTo(62)
+            make.left.equalTo(timelineViewController.backScrollView.snp.left).offset(leftOffset)
+            make.width.equalTo(totalWidth)
+        }
+        
+        // ✅ ENHANCED: Super visible styling for sticker
+        stickerTrackView.backgroundColor = UIColor.systemPink.withAlphaComponent(0.6)  // Higher opacity
+        stickerTrackView.layer.borderColor = UIColor.systemPink.cgColor
+        stickerTrackView.layer.borderWidth = 4  // Even thicker border
+        stickerTrackView.layer.cornerRadius = 8
+        
+        // ✅ Force visibility
+        stickerTrackView.isHidden = false
+        stickerTrackView.alpha = 1.0
+        
+        // ✅ ADD: Enhanced sticker indicator
+        let stickerIndicator = UILabel()
+        stickerIndicator.text = "🎭 STICKER"
+        stickerIndicator.font = UIFont.boldSystemFont(ofSize: 10)
+        stickerIndicator.textColor = UIColor.systemPink
+        stickerIndicator.backgroundColor = UIColor.white
+        stickerIndicator.layer.cornerRadius = 4
+        stickerIndicator.layer.masksToBounds = true
+        stickerIndicator.textAlignment = .center
+        stickerIndicator.layer.borderWidth = 1
+        stickerIndicator.layer.borderColor = UIColor.systemPink.cgColor
+        
+        stickerTrackView.addSubview(stickerIndicator)
+        stickerIndicator.snp.makeConstraints { make in
+            make.top.equalToSuperview().offset(2)
+            make.left.equalToSuperview().offset(26)
+            make.width.equalTo(60)
+            make.height.equalTo(14)
+        }
+        
+        // ✅ CRITICAL: Force layout and bring to front
+        DispatchQueue.main.async {
+            timelineViewController.view.layoutIfNeeded()
+            timelineViewController.backScrollView.bringSubviewToFront(stickerTrackView)
+            timelineViewController.updateMainTrackPosition()
+            timelineViewController.ensureTrackVisibility()
+            
+            // ✅ Final verification
+            print("🎨 FINAL STICKER TRACK STATUS:")
+            print("   - Frame: \(stickerTrackView.frame)")
+            print("   - Hidden: \(stickerTrackView.isHidden)")
+            print("   - Alpha: \(stickerTrackView.alpha)")
+            print("   - Superview bounds: \(stickerTrackView.superview?.bounds ?? .zero)")
+        }
+        
+        print("✅ Sticker track view created successfully at Y: \(yOffset)")
+        return stickerTrackView
+    }
+    
+    
+    private func createTextSeparateRenderTrackView(with itemModel: VLETimeLineItemModel) -> VLETimeLineSeparateRenderTrackView {
+        guard let timelineViewController = VLEMainConcreteMediator.shared.timelineViewController else {
+            fatalError("Cannot access timeline controller")
+        }
+        
+        print("📝 === CREATING TEXT TRACK VIEW ===")
+        print("📝 Current separate tracks: \(timelineViewController.separateRenderTrackViewArray.count)")
+        
+        let textTrackView = VLETimeLineSeparateRenderTrackView(with: itemModel, delegate: timelineViewController)
+        
+        // ✅ Position text track view
+        timelineViewController.backScrollView.addSubview(textTrackView)
+        timelineViewController.backScrollView.bringSubviewToFront(textTrackView)
+        
+        let offset = VLETimeLineConfig.convertToPt(value: itemModel.globalStartTime)
+        let width = VLETimeLineConfig.convertToPt(value: itemModel.source.selectedTimeRange.duration)
+        let dragblockW = textTrackView.dragBlockWidth
+        
+        let leftOffset = offset - dragblockW + timelineViewController.stateModel.fetchScaleFrontMargin()
+        let totalWidth = width + dragblockW * 2
+        
+        // ✅ FIX: Calculate Y position properly
+        let baseYOffset = 62
+        let trackHeight = 70
+        let currentTrackIndex = timelineViewController.separateRenderTrackViewArray.count
+        let yOffset = baseYOffset + (currentTrackIndex * trackHeight)
+        
+        print("📝 Positioning - Y offset: \(yOffset), Track index: \(currentTrackIndex)")
+        
+        textTrackView.snp.makeConstraints { make in
+            make.top.equalTo(timelineViewController.scaleView.snp.bottom).offset(yOffset)
+            make.height.equalTo(62)
+            make.left.equalTo(timelineViewController.backScrollView.snp.left).offset(leftOffset)
+            make.width.equalTo(totalWidth)
+        }
+        
+        // ✅ Enhanced visual styling for text
+        textTrackView.backgroundColor = UIColor.systemPurple.withAlphaComponent(0.4)
+        textTrackView.layer.borderColor = UIColor.systemPurple.cgColor
+        textTrackView.layer.borderWidth = 3
+        textTrackView.layer.cornerRadius = 8
+        
+        // ✅ ADD: Text indicator
+        let textIndicator = UILabel()
+        textIndicator.text = "📝 TEXT"
+        textIndicator.font = UIFont.boldSystemFont(ofSize: 9)
+        textIndicator.textColor = UIColor.systemPurple
+        textIndicator.backgroundColor = UIColor.white.withAlphaComponent(0.95)
+        textIndicator.layer.cornerRadius = 3
+        textIndicator.layer.masksToBounds = true
+        textIndicator.textAlignment = .center
+        textTrackView.addSubview(textIndicator)
+        textIndicator.snp.makeConstraints { make in
+            make.top.equalToSuperview().offset(2)
+            make.left.equalToSuperview().offset(26)
+            make.width.equalTo(45)
+            make.height.equalTo(12)
+        }
+        
+        // ✅ FIX: Update main track position
+        DispatchQueue.main.async {
+            timelineViewController.updateMainTrackPosition()
+        }
+        
+        print("✅ Text track view created successfully at Y: \(yOffset)")
+        return textTrackView
     }
     
     // ✅ MAIN METHOD - Guaranteed text export:
@@ -380,8 +646,8 @@ class VLEEffectFirstLevelView: UIView {
     
     private func showCustomTextInput() {
         let alertController = UIAlertController(
-            title: "Custom Text",
-            message: "Enter your text settings",
+            title: "Custom Text Track",
+            message: "Enter text settings for timeline track",
             preferredStyle: .alert
         )
 
@@ -391,9 +657,15 @@ class VLEEffectFirstLevelView: UIView {
         }
 
         alertController.addTextField { textField in
+            textField.placeholder = "Duration (seconds, 1-10)"
+            textField.keyboardType = .numberPad
+            textField.text = "5"
+        }
+
+        alertController.addTextField { textField in
             textField.placeholder = "Font size (40-150)"
             textField.keyboardType = .numberPad
-            textField.text = "100"
+            textField.text = "80"
         }
 
         alertController.addTextField { textField in
@@ -403,40 +675,82 @@ class VLEEffectFirstLevelView: UIView {
 
         // White text on black background
         alertController.addAction(
-            UIAlertAction(title: "Add White Text", style: .default) { _ in
+            UIAlertAction(title: "Add White Text Track", style: .default) { _ in
                 let text = alertController.textFields?[0].text ?? "Default Text"
-                let fontSize = CGFloat(Double(alertController.textFields?[1].text ?? "100") ?? 100)
-                let position = alertController.textFields?[2].text ?? "center"
+                let duration = max(1.0, min(10.0, Double(alertController.textFields?[1].text ?? "5") ?? 5.0))
+                let fontSize = CGFloat(max(40, min(150, Double(alertController.textFields?[2].text ?? "80") ?? 80)))
+                let position = alertController.textFields?[3].text ?? "center"
                 
-                self.addGuaranteedText(
+                self.addTextToTimeline(
                     text: text,
                     fontSize: fontSize,
                     textColor: .white,
                     backgroundColor: .black.withAlphaComponent(0.8),
-                    position: position
+                    position: position,
+                    duration: duration
                 )
             }
         )
 
         // Red text on white background
         alertController.addAction(
-            UIAlertAction(title: "Add Red Text", style: .default) { _ in
+            UIAlertAction(title: "Add Red Text Track", style: .default) { _ in
                 let text = alertController.textFields?[0].text ?? "Default Text"
-                let fontSize = CGFloat(Double(alertController.textFields?[1].text ?? "100") ?? 100)
-                let position = alertController.textFields?[2].text ?? "center"
+                let duration = max(1.0, min(10.0, Double(alertController.textFields?[1].text ?? "5") ?? 5.0))
+                let fontSize = CGFloat(max(40, min(150, Double(alertController.textFields?[2].text ?? "80") ?? 80)))
+                let position = alertController.textFields?[3].text ?? "center"
                 
-                self.addGuaranteedText(
+                self.addTextToTimeline(
                     text: text,
                     fontSize: fontSize,
                     textColor: .red,
                     backgroundColor: .white.withAlphaComponent(0.9),
-                    position: position
+                    position: position,
+                    duration: duration
                 )
             }
         )
 
         alertController.addAction(UIAlertAction(title: "Cancel", style: .cancel))
         self.presentAlert(alertController)
+    }
+    
+    private func clearAllTextTracks() {
+        guard let timelineViewController = VLEMainConcreteMediator.shared.timelineViewController else { return }
+        
+        // Remove text items from separate track
+        let originalCount = timelineViewController.stateModel.separateRenderTrackItemModelArray.count
+        
+        // Find indices of text items
+        var indicesToRemove: [Int] = []
+        for (index, item) in timelineViewController.stateModel.separateRenderTrackItemModelArray.enumerated() {
+            if item.type == .text {
+                indicesToRemove.append(index)
+            }
+        }
+        
+        // Remove from highest index to lowest to avoid index shifting
+        for index in indicesToRemove.reversed() {
+            timelineViewController.stateModel.separateRenderTrackItemModelArray.remove(at: index)
+            
+            // Remove corresponding UI view
+            if index < timelineViewController.separateRenderTrackViewArray.count {
+                let trackView = timelineViewController.separateRenderTrackViewArray[index]
+                trackView.removeFromSuperview()
+                timelineViewController.separateRenderTrackViewArray.remove(at: index)
+            }
+        }
+        
+        let removedCount = indicesToRemove.count
+        
+        // Refresh timeline
+        timelineViewController.stateModel.refreshItemTime()
+        timelineViewController.reloadView()
+        VLEMainConcreteMediator.shared.previewTimeLineItem(videoLab: timelineViewController.buildVideolab())
+        
+        print("🗑️ Removed \(removedCount) text tracks")
+        HUD.show(.label("🗑️ Text tracks cleared"))
+        HUD.hide(afterDelay: 1.0)
     }
     
     private func clearAllTextOverlays() {

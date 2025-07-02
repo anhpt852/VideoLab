@@ -283,6 +283,32 @@ class VLETimeLineSeparateRenderTrackView: UIView {
             self.delegate?.separateRenderTrackViewIsDragEnd()
         }
     }
+    
+    func setupViewForTextTrack() {
+        // Check if this is a text track
+        if itemModel.type == .text {
+            // Add text-specific styling
+            self.backgroundColor = UIColor.systemPurple.withAlphaComponent(0.2)
+            
+            // Add text icon overlay
+            let textIcon = UILabel()
+            textIcon.text = "📝 TEXT"
+            textIcon.font = UIFont.boldSystemFont(ofSize: 10)
+            textIcon.textColor = UIColor.systemPurple
+            textIcon.backgroundColor = UIColor.white.withAlphaComponent(0.9)
+            textIcon.layer.cornerRadius = 4
+            textIcon.layer.masksToBounds = true
+            textIcon.textAlignment = .center
+            
+            self.addSubview(textIcon)
+            textIcon.snp.makeConstraints { make in
+                make.top.equalToSuperview().offset(2)
+                make.left.equalToSuperview().offset(26)
+                make.width.equalTo(45)
+                make.height.equalTo(12)
+            }
+        }
+    }
 }
 
 extension VLETimeLineSeparateRenderTrackView {

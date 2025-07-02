@@ -74,6 +74,31 @@ class VLETimeLineViewController: UIViewController {
     }
     #endif
     
+#if DEBUG
+    private func debugTrackLayout() {
+        print("\n🔍 === TRACK LAYOUT DEBUG ===")
+        print("Scale view frame: \(scaleView.frame)")
+        print("Main track frame: \(renderTrackView.frame)")
+        print("Separate tracks (\(separateRenderTrackViewArray.count)):")
+        
+        for (index, trackView) in separateRenderTrackViewArray.enumerated() {
+            if index < stateModel.separateRenderTrackItemModelArray.count {
+                let itemType = stateModel.separateRenderTrackItemModelArray[index].type
+                print("  Track \(index) (\(itemType)): frame=\(trackView.frame), hidden=\(trackView.isHidden)")
+                print("    - Background: \(trackView.backgroundColor?.description ?? "nil")")
+                print("    - Border: \(trackView.layer.borderColor != nil ? "YES" : "NO")")
+            }
+        }
+        print("=== END TRACK DEBUG ===\n")
+    }
+
+    // Call this in viewDidAppear or after adding tracks:
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        debugTrackLayout()
+    }
+#endif
+    
     // ✅ MODIFY EXISTING addObserverFormNotification() method
     func addObserverFormNotification() {
         let name1 = Notification.Name(rawValue: VLEConstants.VLETimeLineAssetDidIsEmptyNotification)
@@ -256,7 +281,8 @@ class VLETimeLineViewController: UIViewController {
 
     // ✅ ADD method để create audio track view
     private func createAudioSeparateRenderTrackView(with itemModel: VLETimeLineItemModel) -> VLETimeLineSeparateRenderTrackView {
-        print("🎵 Creating audio track view")
+        print("🎵 === CREATING AUDIO TRACK VIEW ===")
+        print("🎵 Current separate tracks: \(separateRenderTrackViewArray.count)")
         
         let audioTrackView = VLETimeLineSeparateRenderTrackView(with: itemModel, delegate: self)
         
@@ -271,8 +297,13 @@ class VLETimeLineViewController: UIViewController {
         let leftOffset = offset - dragblockW + stateModel.fetchScaleFrontMargin()
         let totalWidth = width + dragblockW * 2
         
-        // ✅ Position below existing tracks
-        let yOffset = 62 + (separateRenderTrackViewArray.count * 70) // Stack audio tracks
+        // ✅ FIX: Calculate Y position properly
+        let baseYOffset = 62
+        let trackHeight = 70
+        let currentTrackIndex = separateRenderTrackViewArray.count
+        let yOffset = baseYOffset + (currentTrackIndex * trackHeight)
+        
+        print("🎵 Positioning - Y offset: \(yOffset), Track index: \(currentTrackIndex)")
         
         audioTrackView.snp.makeConstraints { make in
             make.top.equalTo(scaleView.snp.bottom).offset(yOffset)
@@ -281,13 +312,35 @@ class VLETimeLineViewController: UIViewController {
             make.width.equalTo(totalWidth)
         }
         
-        // ✅ Visual styling for audio
-        audioTrackView.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.3)
+        // ✅ Enhanced visual styling for audio
+        audioTrackView.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.4)
         audioTrackView.layer.borderColor = UIColor.systemBlue.cgColor
-        audioTrackView.layer.borderWidth = 2
+        audioTrackView.layer.borderWidth = 3
         audioTrackView.layer.cornerRadius = 8
         
-        print("✅ Audio track view created and positioned")
+        // ✅ ADD: Audio indicator
+        let audioIndicator = UILabel()
+        audioIndicator.text = "🎵 AUDIO"
+        audioIndicator.font = UIFont.boldSystemFont(ofSize: 9)
+        audioIndicator.textColor = UIColor.systemBlue
+        audioIndicator.backgroundColor = UIColor.white.withAlphaComponent(0.95)
+        audioIndicator.layer.cornerRadius = 3
+        audioIndicator.layer.masksToBounds = true
+        audioIndicator.textAlignment = .center
+        audioTrackView.addSubview(audioIndicator)
+        audioIndicator.snp.makeConstraints { make in
+            make.top.equalToSuperview().offset(2)
+            make.left.equalToSuperview().offset(26)
+            make.width.equalTo(50)
+            make.height.equalTo(12)
+        }
+        
+        // ✅ FIX: Update main track position
+        DispatchQueue.main.async {
+            self.updateMainTrackPosition()
+        }
+        
+        print("✅ Audio track view created successfully at Y: \(yOffset)")
         return audioTrackView
     }
 
@@ -432,41 +485,155 @@ class VLETimeLineViewController: UIViewController {
         path.close()
         return path
     }
-
-    // ✅ ADD method để create sticker track view
-    private func createStickerSeparateRenderTrackView(with itemModel: VLETimeLineItemModel) -> VLETimeLineSeparateRenderTrackView {
-        print("🎨 Creating sticker track view")
+    
+    private func createTextSeparateRenderTrackView(with itemModel: VLETimeLineItemModel) -> VLETimeLineSeparateRenderTrackView {
+        print("📝 === CREATING TEXT TRACK VIEW ===")
+        print("📝 Current separate tracks: \(separateRenderTrackViewArray.count)")
         
-        let stickerTrackView = VLETimeLineSeparateRenderTrackView(with: itemModel, delegate: self)
+        let textTrackView = VLETimeLineSeparateRenderTrackView(with: itemModel, delegate: self)
         
-        // ✅ Position sticker track view
-        backScrollView.addSubview(stickerTrackView)
-        backScrollView.bringSubviewToFront(stickerTrackView)
+        // ✅ Position text track view
+        backScrollView.addSubview(textTrackView)
+        backScrollView.bringSubviewToFront(textTrackView)
         
         let offset = VLETimeLineConfig.convertToPt(value: itemModel.globalStartTime)
         let width = VLETimeLineConfig.convertToPt(value: itemModel.source.selectedTimeRange.duration)
-        let dragblockW = stickerTrackView.dragBlockWidth
+        let dragblockW = textTrackView.dragBlockWidth
         
         let leftOffset = offset - dragblockW + stateModel.fetchScaleFrontMargin()
         let totalWidth = width + dragblockW * 2
         
-        // ✅ Position below existing tracks (stack with audio)
-        let yOffset = 62 + (separateRenderTrackViewArray.count * 70)
+        // ✅ FIX: Calculate Y position properly
+        let baseYOffset = 62
+        let trackHeight = 70
+        let currentTrackIndex = separateRenderTrackViewArray.count
+        let yOffset = baseYOffset + (currentTrackIndex * trackHeight)
         
-        stickerTrackView.snp.makeConstraints { make in
+        print("📝 Positioning - Y offset: \(yOffset), Track index: \(currentTrackIndex)")
+        
+        textTrackView.snp.makeConstraints { make in
             make.top.equalTo(scaleView.snp.bottom).offset(yOffset)
             make.height.equalTo(62)
             make.left.equalTo(backScrollView.snp.left).offset(leftOffset)
             make.width.equalTo(totalWidth)
         }
         
-        // ✅ Visual styling for sticker
-        stickerTrackView.backgroundColor = UIColor.systemPink.withAlphaComponent(0.3)
+        // ✅ Enhanced visual styling for text
+        textTrackView.backgroundColor = UIColor.systemPurple.withAlphaComponent(0.4)
+        textTrackView.layer.borderColor = UIColor.systemPurple.cgColor
+        textTrackView.layer.borderWidth = 3
+        textTrackView.layer.cornerRadius = 8
+        
+        // ✅ ADD: Text indicator
+        let textIndicator = UILabel()
+        textIndicator.text = "📝 TEXT"
+        textIndicator.font = UIFont.boldSystemFont(ofSize : 9.0)
+        textIndicator.textColor = UIColor.systemPurple
+        textIndicator.backgroundColor = UIColor.white.withAlphaComponent(0.95)
+        textIndicator.layer.cornerRadius = 3
+        textIndicator.layer.masksToBounds = true
+        textIndicator.textAlignment = .center
+        textTrackView.addSubview(textIndicator)
+        textIndicator.snp.makeConstraints { make in
+            make.top.equalToSuperview().offset(2)
+            make.left.equalToSuperview().offset(26)
+            make.width.equalTo(45)
+            make.height.equalTo(12)
+        }
+        
+        // ✅ FIX: Update main track position
+        DispatchQueue.main.async {
+            self.updateMainTrackPosition()
+        }
+        
+        print("✅ Text track view created successfully at Y: \(yOffset)")
+        return textTrackView
+    }
+
+    // ✅ ADD method để create sticker track view
+    private func createStickerSeparateRenderTrackView(with itemModel: VLETimeLineItemModel) -> VLETimeLineSeparateRenderTrackView {
+        guard let timelineViewController = VLEMainConcreteMediator.shared.timelineViewController else {
+            fatalError("Cannot access timeline controller")
+        }
+        
+        print("🎨 === CREATING STICKER TRACK VIEW (ENHANCED) ===")
+        print("🎨 Current separate tracks: \(timelineViewController.separateRenderTrackViewArray.count)")
+        
+        let stickerTrackView = VLETimeLineSeparateRenderTrackView(with: itemModel, delegate: timelineViewController)
+        
+        // ✅ CRITICAL: Add to scroll view first
+        timelineViewController.backScrollView.addSubview(stickerTrackView)
+        
+        let offset = VLETimeLineConfig.convertToPt(value: itemModel.globalStartTime)
+        let width = VLETimeLineConfig.convertToPt(value: itemModel.source.selectedTimeRange.duration)
+        let dragblockW = stickerTrackView.dragBlockWidth
+        
+        let leftOffset = offset - dragblockW + timelineViewController.stateModel.fetchScaleFrontMargin()
+        let totalWidth = width + dragblockW * 2
+        
+        // ✅ FIX: Calculate Y position properly with existing tracks
+        let baseYOffset = 62
+        let trackHeight = 70
+        let currentTrackIndex = timelineViewController.separateRenderTrackViewArray.count
+        let yOffset = baseYOffset + (currentTrackIndex * trackHeight)
+        
+        print("🎨 Positioning - Y offset: \(yOffset), Track index: \(currentTrackIndex)")
+        print("🎨 Left offset: \(leftOffset), Width: \(totalWidth)")
+        
+        // ✅ CRITICAL: Set constraints properly
+        stickerTrackView.snp.makeConstraints { make in
+            make.top.equalTo(timelineViewController.scaleView.snp.bottom).offset(yOffset)
+            make.height.equalTo(62)
+            make.left.equalTo(timelineViewController.backScrollView.snp.left).offset(leftOffset)
+            make.width.equalTo(totalWidth)
+        }
+        
+        // ✅ ENHANCED: Super visible styling for sticker
+        stickerTrackView.backgroundColor = UIColor.systemPink.withAlphaComponent(0.6)  // Higher opacity
         stickerTrackView.layer.borderColor = UIColor.systemPink.cgColor
-        stickerTrackView.layer.borderWidth = 2
+        stickerTrackView.layer.borderWidth = 4  // Even thicker border
         stickerTrackView.layer.cornerRadius = 8
         
-        print("✅ Sticker track view created and positioned")
+        // ✅ Force visibility
+        stickerTrackView.isHidden = false
+        stickerTrackView.alpha = 1.0
+        
+        // ✅ ADD: Enhanced sticker indicator
+        let stickerIndicator = UILabel()
+        stickerIndicator.text = "🎭 STICKER"
+        stickerIndicator.font = UIFont.boldSystemFont(ofSize: 10)
+        stickerIndicator.textColor = UIColor.systemPink
+        stickerIndicator.backgroundColor = UIColor.white
+        stickerIndicator.layer.cornerRadius = 4
+        stickerIndicator.layer.masksToBounds = true
+        stickerIndicator.textAlignment = .center
+        stickerIndicator.layer.borderWidth = 1
+        stickerIndicator.layer.borderColor = UIColor.systemPink.cgColor
+        
+        stickerTrackView.addSubview(stickerIndicator)
+        stickerIndicator.snp.makeConstraints { make in
+            make.top.equalToSuperview().offset(2)
+            make.left.equalToSuperview().offset(26)
+            make.width.equalTo(60)
+            make.height.equalTo(14)
+        }
+        
+        // ✅ CRITICAL: Force layout and bring to front
+        DispatchQueue.main.async {
+            timelineViewController.view.layoutIfNeeded()
+            timelineViewController.backScrollView.bringSubviewToFront(stickerTrackView)
+            timelineViewController.updateMainTrackPosition()
+            timelineViewController.ensureTrackVisibility()
+            
+            // ✅ Final verification
+            print("🎨 FINAL STICKER TRACK STATUS:")
+            print("   - Frame: \(stickerTrackView.frame)")
+            print("   - Hidden: \(stickerTrackView.isHidden)")
+            print("   - Alpha: \(stickerTrackView.alpha)")
+            print("   - Superview bounds: \(stickerTrackView.superview?.bounds ?? .zero)")
+        }
+        
+        print("✅ Sticker track view created successfully at Y: \(yOffset)")
         return stickerTrackView
     }
 
@@ -1154,13 +1321,87 @@ extension VLETimeLineViewController {
         refreshViewState()
     }
 
+    public func updateMainTrackPosition() {
+        let totalOverlayTracks = separateRenderTrackViewArray.count
+        let overlayTracksHeight = totalOverlayTracks * 70
+        let newMainTrackOffset = 62 + overlayTracksHeight
+        
+        print("🔄 === UPDATING TIMELINE LAYOUT ===")
+        print("   - Overlay tracks: \(totalOverlayTracks)")
+        print("   - New main track Y: \(newMainTrackOffset)")
+        print("   - Current scroll content size: \(backScrollView.contentSize)")
+        
+        // ✅ FIX: Update main track position
+        renderTrackView.snp.updateConstraints { make in
+            make.top.equalTo(scaleView.snp.bottom).offset(newMainTrackOffset)
+        }
+        
+        // ✅ FIX: Update scroll view content height to include all tracks
+        let mainTrackHeight: CGFloat = 64
+        let toolBarHeight: CGFloat = 40
+        let totalRequiredHeight = CGFloat(CGFloat(newMainTrackOffset) + mainTrackHeight + toolBarHeight + 20) // Extra padding
+        
+        // ✅ Ensure scroll view can accommodate all tracks
+        let currentContentSize = backScrollView.contentSize
+        let newContentHeight = max(CGFloat(totalRequiredHeight), 400.0) // Minimum 400pt height
+        
+        backScrollView.contentSize = CGSize(
+            width: currentContentSize.width,
+            height: newContentHeight
+        )
+        
+        print("   - Updated scroll content height: \(newContentHeight)")
+        print("   - Timeline total height needed: \(totalRequiredHeight)")
+        
+        // ✅ Force layout update with proper timing
+        UIView.animate(withDuration: 0.3, delay: 0, options: [.allowUserInteraction]) {
+            self.view.layoutIfNeeded()
+            self.backScrollView.layoutIfNeeded()
+        } completion: { _ in
+            // ✅ Debug final layout after animation
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                self.debugFinalTrackLayout()
+            }
+        }
+    }
+    
+    private func debugFinalTrackLayout() {
+        print("\n🔍 === FINAL TIMELINE LAYOUT DEBUG ===")
+        print("📊 View hierarchy:")
+        print("   - Main view bounds: \(view.bounds)")
+        print("   - Back scroll view frame: \(backScrollView.frame)")
+        print("   - Back scroll view content size: \(backScrollView.contentSize)")
+        print("   - Scale view frame: \(scaleView.frame)")
+        print("   - Render track view frame: \(renderTrackView.frame)")
+        
+        print("📊 Separate tracks (\(separateRenderTrackViewArray.count)):")
+        for (index, trackView) in separateRenderTrackViewArray.enumerated() {
+            if index < stateModel.separateRenderTrackItemModelArray.count {
+                let itemType = stateModel.separateRenderTrackItemModelArray[index].type
+                let isVisible = !trackView.isHidden && trackView.alpha > 0
+                print("   [\(index)] \(itemType): frame=\(trackView.frame), visible=\(isVisible)")
+                
+                // ✅ Check if track is within scroll view bounds
+                let scrollBounds = backScrollView.bounds
+                let trackIntersects = scrollBounds.intersects(trackView.frame)
+                print("       - Intersects scroll bounds: \(trackIntersects)")
+                print("       - Background alpha: \(trackView.backgroundColor?.cgColor.alpha ?? 0)")
+            }
+        }
+        
+        print("🔍 === END FINAL DEBUG ===\n")
+    }
+    
     // ✅ REPLACE EXISTING refreshViewState() - REMOVE hintLabel references
     func refreshViewState() {
         let hasMainTrack = !stateModel.renderTrackItemModelArray.isEmpty
         let hasOverlayTrack = !stateModel.separateRenderTrackItemModelArray.isEmpty
         let hasAnyContent = stateModel.isHaveRenderTrack
         
-        print("🎬 Refreshing view state - Main: \(hasMainTrack), Overlay: \(hasOverlayTrack)")
+        print("🎬 === REFRESHING VIEW STATE ===")
+        print("   - Main tracks: \(stateModel.renderTrackItemModelArray.count)")
+        print("   - Overlay tracks: \(stateModel.separateRenderTrackItemModelArray.count)")
+        print("   - Separate UI views: \(separateRenderTrackViewArray.count)")
         
         if !hasAnyContent {
             // Empty state
@@ -1187,10 +1428,20 @@ extension VLETimeLineViewController {
             locationLineView.isHidden = false
             movablyAddAssetButton.isHidden = false
             
-            // ✅ Adjust main track position based on overlay tracks count
-            let overlayTracksHeight = separateRenderTrackViewArray.count * 70
-            renderTrackView.snp.updateConstraints { make in
-                make.top.equalTo(scaleView.snp.bottom).offset(62 + overlayTracksHeight)
+            // ✅ CRITICAL: Ensure scroll view can show all content
+            DispatchQueue.main.async {
+                self.updateMainTrackPosition()
+                self.ensureTrackVisibility()
+                
+                // ✅ Auto-scroll to show latest track if needed
+                let totalHeight = self.backScrollView.contentSize.height
+                let visibleHeight = self.backScrollView.bounds.height
+                
+                if totalHeight > visibleHeight {
+                    let bottomOffset = CGPoint(x: 0, y: totalHeight - visibleHeight)
+                    self.backScrollView.setContentOffset(bottomOffset, animated: true)
+                    print("📜 Auto-scrolled to show all tracks")
+                }
             }
             
             NotificationCenter.default.post(
@@ -1198,8 +1449,39 @@ extension VLETimeLineViewController {
                 object: nil
             )
         }
+        
+        print("🎬 === END REFRESH VIEW STATE ===")
     }
 
+    public func forceShowAllTracks() {
+        print("🔧 === FORCE SHOWING ALL TRACKS ===")
+        
+        // ✅ Update scroll content size
+        let totalTracks = separateRenderTrackViewArray.count
+        let requiredHeight = CGFloat(62 + (totalTracks * 70) + 64 + 100) // Extra padding
+        
+        if backScrollView.contentSize.height < requiredHeight {
+            backScrollView.contentSize = CGSize(
+                width: backScrollView.contentSize.width,
+                height: requiredHeight
+            )
+            print("🔧 Updated scroll content height to: \(requiredHeight)")
+        }
+        
+        // ✅ Force layout all tracks
+        for trackView in separateRenderTrackViewArray {
+            trackView.setNeedsLayout()
+            trackView.layoutIfNeeded()
+            backScrollView.bringSubviewToFront(trackView)
+        }
+        
+        // ✅ Final layout pass
+        view.setNeedsLayout()
+        view.layoutIfNeeded()
+        
+        print("🔧 === FORCE SHOW COMPLETED ===")
+    }
+    
     // ✅ ADD WARNING METHOD
     private func showMainTrackWarning() {
         let alert = UIAlertController(
@@ -1266,11 +1548,50 @@ extension VLETimeLineViewController {
         
         scaleView.refreshTimeWith(seconds: stateModel.totalSeconds)
         
-        // ✅ FIX: Base scroll content on main track, not total timeline
-        let mainTrackSeconds = CMTimeGetSeconds(stateModel.calculateMainTrackDuration())
-        print("🔄 Scroll content based on main track: \(mainTrackSeconds)s")
+        // ✅ FIX: Calculate proper content height including all tracks
+        let totalOverlayTracks = separateRenderTrackViewArray.count
+        let baseHeight: CGFloat = 62 // Scale view height
+        let overlayTracksHeight = CGFloat(totalOverlayTracks * 70)
+        let mainTrackHeight: CGFloat = 64
+        let toolBarHeight: CGFloat = 40
+        let extraPadding: CGFloat = 50
         
-        backScrollView.contentSize = CGSize(width: contentWidth, height: 210)
+        let totalContentHeight = CGFloat(baseHeight + overlayTracksHeight + mainTrackHeight + toolBarHeight + extraPadding)
+        
+        backScrollView.contentSize = CGSize(width: contentWidth, height: totalContentHeight)
+        
+        print("🔄 === SCROLL VIEW UPDATE ===")
+        print("   - Content width: \(contentWidth)")
+        print("   - Content height: \(totalContentHeight)")
+        print("   - Overlay tracks: \(totalOverlayTracks)")
+        print("   - Calculated overlay height: \(overlayTracksHeight)")
+        print("=== END SCROLL UPDATE ===")
+    }
+    
+    func ensureTrackVisibility() {
+        print("🔍 === ENSURING TRACK VISIBILITY ===")
+        
+        // ✅ Bring all separate tracks to front in correct order
+        for (index, trackView) in separateRenderTrackViewArray.enumerated() {
+            backScrollView.bringSubviewToFront(trackView)
+            
+            // ✅ Ensure track is not hidden
+            trackView.isHidden = false
+            trackView.alpha = 1.0
+            
+            // ✅ Debug track visibility
+            let itemType = stateModel.separateRenderTrackItemModelArray[index].type
+            print("   Track \(index) (\(itemType)): frame=\(trackView.frame), hidden=\(trackView.isHidden)")
+            print("     - Background: \(trackView.backgroundColor?.description ?? "nil")")
+            print("     - Alpha: \(trackView.alpha)")
+            print("     - Superview: \(trackView.superview != nil ? "YES" : "NO")")
+        }
+        
+        // ✅ Ensure main track is visible
+        renderTrackView.isHidden = false
+        backScrollView.bringSubviewToFront(renderTrackView)
+        
+        print("=== END VISIBILITY CHECK ===")
     }
 
     @objc func addAssetButtonClickAction() {
