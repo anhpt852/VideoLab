@@ -34,9 +34,13 @@ class VLEPlaybackViewController: UIViewController {
     var player: AVPlayer?
     var playLayer: AVPlayerLayer?
 
+    // ✅ ADD: Track observer state
+    private var isObservingPlayerRate = false
+    private var currentPlayerItem: AVPlayerItem?
+
     private var activeTextOverlays: [UILabel] = []
     private var textPreviewTimeObserver: Any?
-    
+
     override func viewDidLoad() {
 
         self.view.addSubview(hintLabel)
@@ -78,7 +82,6 @@ class VLEPlaybackViewController: UIViewController {
             self, selector: #selector(assetDidIsNonempty), name: name2,
             object: nil)
 
-        // ✅ ADD NEW OBSERVER
         let name3 = Notification.Name(
             rawValue: VLEConstants.VLETimeLineOverlayOnlyWarningNotification)
         NotificationCenter.default.addObserver(
@@ -87,11 +90,81 @@ class VLEPlaybackViewController: UIViewController {
     }
 
     deinit {
+        print("🗑️ VLEPlaybackViewController deinit started")
+
         clearAllTextOverlays()
+
         if let observer = textPreviewTimeObserver {
             player?.removeTimeObserver(observer)
+            textPreviewTimeObserver = nil
         }
+
+        // ✅ Safe KVO removal
+        removePlayerObservers()
+
+        // ✅ Safe notification removal
         NotificationCenter.default.removeObserver(self)
+
+        print("🗑️ VLEPlaybackViewController cleaned up successfully")
+    }
+
+    private func removePlayerObservers() {
+        // ✅ Remove KVO observer safely
+        if isObservingPlayerRate, let player = self.player {
+            do {
+                player.removeObserver(self, forKeyPath: "rate")
+                isObservingPlayerRate = false
+                print("✅ KVO observer removed successfully")
+            } catch {
+                print("⚠️ KVO observer was not registered: \(error)")
+            }
+        }
+
+        // ✅ Remove notification observer safely
+        if let currentItem = currentPlayerItem {
+            NotificationCenter.default.removeObserver(
+                self,
+                name: .AVPlayerItemDidPlayToEndTime,
+                object: currentItem
+            )
+            currentPlayerItem = nil
+            print("✅ Notification observer removed successfully")
+        }
+    }
+
+    private func addPlayerObservers() {
+        guard let player = self.player else {
+            print("⚠️ Cannot add observers: player is nil")
+            return
+        }
+
+        // ✅ Remove existing observers first
+        removePlayerObservers()
+
+        // ✅ Add KVO observer safely
+        if !isObservingPlayerRate {
+            do {
+                player.addObserver(
+                    self, forKeyPath: "rate", options: [.new, .old],
+                    context: nil)
+                isObservingPlayerRate = true
+                print("✅ KVO observer added successfully")
+            } catch {
+                print("❌ Failed to add KVO observer: \(error)")
+            }
+        }
+
+        // ✅ Add notification observer safely
+        if let playerItem = player.currentItem {
+            currentPlayerItem = playerItem
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(playerDidFinishPlaying),
+                name: .AVPlayerItemDidPlayToEndTime,
+                object: playerItem
+            )
+            print("✅ Notification observer added successfully")
+        }
     }
 
     // ✅ MODIFY EXISTING assetDidIsEmpty() method
@@ -145,6 +218,8 @@ class VLEPlaybackViewController: UIViewController {
         playerItem.seekingWaitsForVideoCompositionRendering = true
 
         if self.player != nil {
+            // ✅ Safe cleanup before replacing
+            removePlayerObservers()
             self.player?.replaceCurrentItem(with: playerItem)
         } else {
             self.player = AVPlayer(playerItem: playerItem)
@@ -166,27 +241,32 @@ class VLEPlaybackViewController: UIViewController {
                         self.convertSecond(for: time)
                     VLEMainConcreteMediator.shared
                         .playbackProgressValueDidChanged(currentTime: time)
-
-                    // ✅ UPDATE TEXT OVERLAYS BASED ON TIME
                     self.updateTextOverlaysForTime(time)
                 })
         }
 
-        // ✅ SETUP TEXT PREVIEW TRACKING
+        // ✅ Setup observers after player is ready
+        addPlayerObservers()
+
+        // Apply audio mixing
+        applyBalancedAudioMixing(to: playerItem)
         setupTextPreviewTracking(for: videoLab)
 
         let audioTracks = playerItem.asset.tracks(withMediaType: .audio)
-        if !audioTracks.isEmpty {
-            print("✅ Audio tracks found: \(audioTracks.count)")
-            for (index, track) in audioTracks.enumerated() {
-                print(
-                    "🔍 Audio track \(index): enabled=\(track.isEnabled), volume=\(track.preferredVolume)"
-                )
-            }
-        } else {
-            print("❌ No audio tracks in video")
-        }
+        print("🔍 Total audio tracks in composition: \(audioTracks.count)")
+
         self.player?.seek(to: CMTime.init(seconds: 0, preferredTimescale: 600))
+    }
+
+    @objc private func playerDidFinishPlaying() {
+        DispatchQueue.main.async {
+            self.playbackControlView.updateForPaused()
+            print("🏁 Playback finished - button reset to play")
+        }
+    }
+
+    private func applyBalancedAudioMixing(to playerItem: AVPlayerItem) {
+        createSmartAudioMix(for: playerItem)
     }
 
     private func setupTextPreviewTracking(for videoLab: VideoLab) {
@@ -304,13 +384,250 @@ class VLEPlaybackViewController: UIViewController {
             return ""
         }
     }
+
+    private func applyAudioStateToPlayer() {
+        guard
+            let timelineVC = VLEMainConcreteMediator.shared
+                .timelineViewController,
+            let player = self.player,
+            let playerItem = player.currentItem
+        else {
+            return
+        }
+
+        if timelineVC.stateModel.isVideoAudioMuted {
+            createPlayerLevelAudioMix(for: playerItem)
+            print("🔇 Applied player-level audio muting")
+        } else {
+            playerItem.audioMix = nil
+            print("🔊 Removed player-level audio muting")
+        }
+    }
+
+    private func createPlayerLevelAudioMix(for playerItem: AVPlayerItem) {
+        let asset = playerItem.asset
+        let audioTracks = asset.tracks(withMediaType: .audio)
+
+        guard !audioTracks.isEmpty else { return }
+
+        let audioMix = AVMutableAudioMix()
+        var inputParameters: [AVMutableAudioMixInputParameters] = []
+
+        for audioTrack in audioTracks {
+            let audioInputParams = AVMutableAudioMixInputParameters(
+                track: audioTrack)
+            audioInputParams.setVolume(0.0, at: CMTime.zero)
+            inputParameters.append(audioInputParams)
+        }
+
+        audioMix.inputParameters = inputParameters
+        playerItem.audioMix = audioMix
+    }
+
+    private func createSmartAudioMix(for playerItem: AVPlayerItem) {
+        guard
+            let timelineVC = VLEMainConcreteMediator.shared
+                .timelineViewController
+        else { return }
+
+        let asset = playerItem.asset
+        let audioTracks = asset.tracks(withMediaType: .audio)
+        let composition = asset as? AVMutableComposition
+
+        guard !audioTracks.isEmpty else {
+            print("⚠️ No audio tracks to mix")
+            return
+        }
+
+        print("🎛️ === SMART AUDIO MIXING ===")
+        print("🎛️ Total audio tracks: \(audioTracks.count)")
+
+        let isVideoMuted = timelineVC.stateModel.isVideoAudioMuted
+        let mainTrackDuration = timelineVC.stateModel
+            .calculateMainTrackDuration()
+        let mainDurationSeconds = CMTimeGetSeconds(mainTrackDuration)
+
+        print("🎛️ Main track duration: \(mainDurationSeconds)s")
+        print("🎛️ Video audio muted: \(isVideoMuted)")
+
+        // ✅ Calculate video track count and added audio info
+        let videoTrackCount = timelineVC.stateModel.renderTrackItemModelArray
+            .filter { $0.type == .video }.count
+        let addedAudioItems = timelineVC.stateModel
+            .separateRenderTrackItemModelArray.filter { $0.type == .audio }
+
+        let audioMix = AVMutableAudioMix()
+        var inputParameters: [AVMutableAudioMixInputParameters] = []
+
+        // ✅ Process each audio track with smart volume management
+        for (index, audioTrack) in audioTracks.enumerated() {
+            let audioInputParams = AVMutableAudioMixInputParameters(
+                track: audioTrack)
+
+            if index < videoTrackCount {
+                // ✅ Video audio track
+                handleVideoAudioTrack(
+                    audioInputParams, audioTrack: audioTrack,
+                    isVideoMuted: isVideoMuted, mainDuration: mainTrackDuration,
+                    addedAudioItems: addedAudioItems)
+            } else {
+                // ✅ Added audio track
+                handleAddedAudioTrack(
+                    audioInputParams, audioTrack: audioTrack,
+                    trackIndex: index - videoTrackCount,
+                    isVideoMuted: isVideoMuted, mainDuration: mainTrackDuration,
+                    addedAudioItems: addedAudioItems)
+            }
+
+            inputParameters.append(audioInputParams)
+        }
+
+        audioMix.inputParameters = inputParameters
+        playerItem.audioMix = audioMix
+
+        print("✅ Smart audio mix applied!")
+        print("🎛️ === END SMART MIXING ===")
+    }
+
+    private func handleVideoAudioTrack(
+        _ params: AVMutableAudioMixInputParameters, audioTrack: AVAssetTrack,
+        isVideoMuted: Bool, mainDuration: CMTime,
+        addedAudioItems: [VLETimeLineItemModel]
+    ) {
+
+        if isVideoMuted {
+            // ✅ REPLACE MODE: Mute video audio completely
+            params.setVolume(0.0, at: CMTime.zero)
+            print("🔇 Video audio: MUTED (replace mode)")
+        } else if !addedAudioItems.isEmpty {
+            // ✅ MIX MODE: Smart mixing based on added audio coverage
+            let addedAudioDuration = calculateAddedAudioCoverage(
+                addedAudioItems)
+            let addedAudioSeconds = CMTimeGetSeconds(addedAudioDuration)
+            let mainDurationSeconds = CMTimeGetSeconds(mainDuration)
+
+            if addedAudioSeconds >= mainDurationSeconds {
+                // ✅ Added audio covers full video - reduce video volume
+                params.setVolume(0.4, at: CMTime.zero)  // 40% volume for balance
+                print("🔉 Video audio: 40% volume (full coverage mix)")
+            } else {
+                // ✅ Added audio is shorter - variable mixing
+                // Full mix during added audio period
+                params.setVolume(0.4, at: CMTime.zero)
+                // Return to full volume after added audio ends
+                params.setVolume(1.0, at: addedAudioDuration)
+                print(
+                    "🔉 Video audio: 40% → 100% at \(addedAudioSeconds)s (partial coverage)"
+                )
+            }
+        } else {
+            // ✅ No added audio - full video volume
+            params.setVolume(1.0, at: CMTime.zero)
+            print("🔊 Video audio: FULL volume (no added audio)")
+        }
+    }
+
+    private func handleAddedAudioTrack(
+        _ params: AVMutableAudioMixInputParameters, audioTrack: AVAssetTrack,
+        trackIndex: Int, isVideoMuted: Bool, mainDuration: CMTime,
+        addedAudioItems: [VLETimeLineItemModel]
+    ) {
+
+        guard trackIndex < addedAudioItems.count else {
+            params.setVolume(0.0, at: CMTime.zero)
+            return
+        }
+
+        let audioItem = addedAudioItems[trackIndex]
+        let audioDuration = audioItem.source.selectedTimeRange.duration
+        let audioStartTime = audioItem.globalStartTime
+        let audioEndTime = CMTimeAdd(audioStartTime, audioDuration)
+
+        let mainDurationSeconds = CMTimeGetSeconds(mainDuration)
+        let audioEndSeconds = CMTimeGetSeconds(audioEndTime)
+
+        print(
+            "🎵 Added audio \(trackIndex): \(CMTimeGetSeconds(audioStartTime))s - \(audioEndSeconds)s"
+        )
+
+        if isVideoMuted {
+            // ✅ REPLACE MODE: Added audio at full volume
+            params.setVolume(1.0, at: audioStartTime)
+            params.setVolume(0.0, at: audioEndTime)  // Silence after audio ends
+            print("🔊 Added audio: FULL volume (replace mode)")
+        } else {
+            // ✅ MIX MODE: Balanced volume
+            params.setVolume(0.0, at: CMTime.zero)  // Start silent
+            params.setVolume(0.7, at: audioStartTime)  // 70% during playback
+            params.setVolume(0.0, at: audioEndTime)  // Silent after end
+            print("🔉 Added audio: 0% → 70% → 0% (mix mode)")
+        }
+    }
+
+    private func calculateAddedAudioCoverage(
+        _ addedAudioItems: [VLETimeLineItemModel]
+    ) -> CMTime {
+        guard !addedAudioItems.isEmpty else { return CMTime.zero }
+
+        var latestEndTime = CMTime.zero
+
+        for audioItem in addedAudioItems {
+            let audioEndTime = CMTimeAdd(
+                audioItem.globalStartTime,
+                audioItem.source.selectedTimeRange.duration)
+            if CMTimeCompare(audioEndTime, latestEndTime) > 0 {
+                latestEndTime = audioEndTime
+            }
+        }
+
+        return latestEndTime
+    }
+
+    override func observeValue(
+        forKeyPath keyPath: String?, of object: Any?,
+        change: [NSKeyValueChangeKey: Any]?, context: UnsafeMutableRawPointer?
+    ) {
+
+        guard keyPath == "rate", let player = object as? AVPlayer else {
+            super.observeValue(
+                forKeyPath: keyPath, of: object, change: change,
+                context: context)
+            return
+        }
+
+        // ✅ Verify this is our player
+        guard player === self.player else {
+            print("⚠️ Received rate change from different player")
+            return
+        }
+
+        DispatchQueue.main.async {
+            if player.rate > 0 {
+                self.playbackControlView.updateForPlaying()
+                print("▶️ Player state: Playing (rate: \(player.rate))")
+            } else {
+                self.playbackControlView.updateForPaused()
+                print("⏸️ Player state: Paused (rate: \(player.rate))")
+            }
+        }
+    }
 }
 
 extension VLEPlaybackViewController: VLEPlaybackControlViewDelegate {
 
     func playbackControlView(
-        _ view: VLEPlaybackControlView, clickPlaybackButton button: UIButton
+        _ view: VLEPlaybackControlView, clickPlaybackButton button: UIButton,
+        action: VLEPlaybackAction
     ) {
-        self.player?.play()
+        switch action {
+        case .play:
+            self.player?.play()
+            view.updateForPlaying()
+            print("▶️ Playback started")
+        case .pause:
+            self.player?.pause()
+            view.updateForPaused()
+            print("⏸️ Playback paused")
+        }
     }
 }

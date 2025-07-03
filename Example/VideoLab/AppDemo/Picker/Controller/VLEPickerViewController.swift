@@ -218,12 +218,120 @@ class VLEPickerViewController: UIViewController {
 
     func handleAudioListViewEvent() {
         audioListView.selectedAudioBlock = { [weak self] model in
-            self?.dismiss(animated: true)
-            let source = AVAssetSource.init(asset: model.asset)
+            guard let self = self else { return }
+            
+            // ✅ Show audio options dialog before adding
+            self.showAudioOptionsDialog(for: model)
+        }
+    }
+    
+    private func showAudioOptionsDialog(for audioModel: VLEPickerAudioItemModel) {
+        let alertController = UIAlertController(
+            title: "🎵 Audio Options",
+            message: "How would you like to add this audio?",
+            preferredStyle: .actionSheet
+        )
+        
+        // ✅ Option 1: Mix with video audio
+        alertController.addAction(
+            UIAlertAction(title: "🎤 Mix with Video Audio", style: .default) { _ in
+                self.addAudioWithMixing(audioModel: audioModel, replaceVideoAudio: false)
+            }
+        )
+        
+        // ✅ Option 2: Replace video audio (mute original)
+        alertController.addAction(
+            UIAlertAction(title: "🔇 Replace Video Audio", style: .default) { _ in
+                self.addAudioWithMixing(audioModel: audioModel, replaceVideoAudio: true)
+            }
+        )
+        
+        // ✅ Option 3: Cancel
+        alertController.addAction(
+            UIAlertAction(title: "Cancel", style: .cancel)
+        )
+        
+        // ✅ iPad support
+        if let popover = alertController.popoverPresentationController {
+            popover.sourceView = self.view
+            popover.sourceRect = CGRect(x: self.view.bounds.midX, y: self.view.bounds.midY, width: 0, height: 0)
+            popover.permittedArrowDirections = []
+        }
+        
+        self.present(alertController, animated: true)
+    }
+    
+    
+    private func addAudioWithMixing(audioModel: VLEPickerAudioItemModel, replaceVideoAudio: Bool) {
+        self.dismiss(animated: true) {
+            let source = AVAssetSource(asset: audioModel.asset)
+            
+            // ✅ Add audio track to timeline
             VLEMainConcreteMediator.shared.addAudioToSeparateTrackWith(source: source)
+            
+            // ✅ Handle video audio muting if requested
+            if replaceVideoAudio {
+                VLEMainConcreteMediator.shared.muteVideoAudio()
+                
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    HUD.show(.label("🔇 Video audio muted, new audio added"))
+                    HUD.hide(afterDelay: 2.0)
+                }
+            } else {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    HUD.show(.label("🎤 Audio mixed with video"))
+                    HUD.hide(afterDelay: 2.0)
+                }
+            }
         }
     }
 }
+
+extension VLEMainConcreteMediator {
+    
+    func muteVideoAudio() {
+            guard let timelineVC = timelineViewController else {
+                print("❌ Cannot access timeline for audio muting")
+                return
+            }
+            
+            print("🔇 === MUTING VIDEO AUDIO ===")
+            timelineVC.stateModel.isVideoAudioMuted = true
+            
+            // ✅ Rebuild với video audio muted
+            refreshAudioMixing()
+            
+            print("✅ Video audio muted, added audio still playing")
+        }
+        
+        func unmuteVideoAudio() {
+            guard let timelineVC = timelineViewController else {
+                print("❌ Cannot access timeline for audio unmuting")
+                return
+            }
+            
+            print("🔊 === UNMUTING VIDEO AUDIO ===")
+            timelineVC.stateModel.isVideoAudioMuted = false
+            
+            // ✅ Rebuild với balanced mixing
+            refreshAudioMixing()
+            
+            print("✅ Video audio unmuted, both audios now playing")
+        }
+    
+    func refreshAudioMixing() {
+            guard let timelineVC = timelineViewController,
+                  let playbackVC = playbackViewController else {
+                return
+            }
+            
+            // ✅ Rebuild VideoLab với proper audio balance
+            let videoLab = timelineVC.buildVideolab()
+            playbackVC.previewItem(with: videoLab)
+        }
+    }
+    
+    
 
 extension VLEPickerViewController {
     private func makeBottomView() -> VLEPickerBottomView {
@@ -271,5 +379,18 @@ extension VLEPickerViewController {
             fatalError("Không tìm thấy album Camera Roll. Đảm bảo quyền truy cập ảnh đã được cấp.")
         }
         return model
+    }
+}
+
+extension RenderLayer {
+    private static var userDataKey: UInt8 = 0
+    
+    var userData: Any? {
+        get {
+            return objc_getAssociatedObject(self, &RenderLayer.userDataKey)
+        }
+        set {
+            objc_setAssociatedObject(self, &RenderLayer.userDataKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        }
     }
 }
