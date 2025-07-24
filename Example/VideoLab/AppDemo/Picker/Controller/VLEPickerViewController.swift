@@ -267,7 +267,20 @@ extension VLEPickerViewController {
     }
     
     private func makeAlbumListModel() -> VLEPickerAlbumListModel {
-        let model = VLEPickerFetchAssetManager.fetchAlbums()
-        return model
+        if let model = VLEPickerFetchAssetManager.fetchAlbums() {
+            return model
+        } else {
+            let emptyCollections = PHAssetCollection.fetchAssetCollections(with: .album, subtype: .albumRegular, options: nil)
+            let dummyCollection = emptyCollections.firstObject ?? PHAssetCollection()
+
+            return VLEPickerAlbumListModel(
+                title: "空相册",
+                result: PHFetchResult<PHAsset>(),  // empty
+                collection: dummyCollection,
+                option: PHFetchOptions(),
+                isCameraRoll: false
+            )
+        }
     }
+
 }
