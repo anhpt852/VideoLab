@@ -11,20 +11,51 @@ import Photos
 
 class VLEPickerFetchAssetManager: NSObject {
 
-    class func fetchAlbums() -> VLEPickerAlbumListModel {
-        var model: VLEPickerAlbumListModel?
+    class func fetchAlbums() -> VLEPickerAlbumListModel? {
         let option = PHFetchOptions()
-        let smartAlbums = PHAssetCollection.fetchAssetCollections(with: PHAssetCollectionType.smartAlbum, subtype: PHAssetCollectionSubtype.albumRegular, options: nil)
+        let smartAlbums = PHAssetCollection.fetchAssetCollections(with: .smartAlbum, subtype: .albumRegular, options: nil)
+
+        var fallbackModel: VLEPickerAlbumListModel?
+        var maxAssetCount = 0
+
         smartAlbums.enumerateObjects { collection, _, stop in
-            if collection.assetCollectionSubtype == .smartAlbumUserLibrary {
-                let result = PHAsset.fetchAssets(in: collection, options: option)
-                let albumModel = VLEPickerAlbumListModel.init(title: collection.localizedTitle ?? "所有照片", result: result, collection: collection, option: option, isCameraRoll: true)
-                model = albumModel
+            let localizedTitle = collection.localizedTitle?.lowercased() ?? ""
+            let result = PHAsset.fetchAssets(in: collection, options: option)
+
+            // Cập nhật fallback nếu album hiện tại có nhiều ảnh hơn
+            if result.count > maxAssetCount {
+                maxAssetCount = result.count
+                fallbackModel = VLEPickerAlbumListModel(
+                    title: collection.localizedTitle ?? "默认",
+                    result: result,
+                    collection: collection,
+                    option: option,
+                    isCameraRoll: false
+                )
+            }
+
+            // So sánh theo tiêu đề chứa từ khoá phổ biến
+            if localizedTitle.contains("camera roll") ||
+               localizedTitle.contains("all photos") ||
+               localizedTitle.contains("tất cả ảnh") ||
+               localizedTitle.contains("所有照片") ||
+               localizedTitle.contains("recents") {
+
+                let model = VLEPickerAlbumListModel(
+                    title: collection.localizedTitle ?? "所有照片",
+                    result: result,
+                    collection: collection,
+                    option: option,
+                    isCameraRoll: true
+                )
                 stop.pointee = true
+                fallbackModel = model
             }
         }
-        return model!
+
+        return fallbackModel
     }
+
 
     class func fetchPhoto(in result: PHFetchResult<PHAsset>) -> [VLEPickerAssetModel] {
         var models: [VLEPickerAssetModel] = []

@@ -4,6 +4,7 @@
 //
 //  Created by Kay on 2022/7/21.
 //  Copyright © 2022 Chocolate. All rights reserved.
+//  UPDATED: Added linked segments support
 //
 
 import UIKit
@@ -77,10 +78,21 @@ class VLETimeLineViewController: UIViewController {
         }
     }
 
+    // 🔄 MODIFIED: Added linked segments setup
     public func addAssetToRenderTrackViewWith(itemModelArray: [VLETimeLineItemModel]) {
         guard !itemModelArray.isEmpty else {
             return
         }
+        
+        // 🆕 NEW: Setup linked segment properties for new assets
+        for item in itemModelArray {
+            let sourceID = UUID().uuidString
+            item.originalSourceID = sourceID
+            item.segmentIndex = 0
+            item.originalSourceDuration = item.source.duration
+            item.originalSourceStartTime = CMTime.zero
+        }
+        
         stateModel.renderTrackItemModelArray.append(contentsOf: itemModelArray)
         stateModel.refreshItemTime()
         reloadView()
@@ -233,6 +245,7 @@ extension VLETimeLineViewController: VLETimeLineRenderTrackViewDelegate {
         }
     }
 
+    // 🔄 MODIFIED: Added stateModel reference passing
     func showRenderTrackDragView(with sourceView: VLETimeLineRenderTrackSegmentView, index: Int) {
         if let itemModel = stateModel.currentSelectedItemModel {
             if itemModel.isSeparateRenderTrack {
@@ -254,6 +267,10 @@ extension VLETimeLineViewController: VLETimeLineRenderTrackViewDelegate {
         }
 
         renderLayerDargView = VLETimeLineRenderTrackDragView.init(delegate: self, targetView: sourceView)
+        
+        // 🆕 NEW: Pass stateModel reference
+        renderLayerDargView?.stateModel = stateModel
+        
         backScrollView.addSubview(renderLayerDargView!)
         renderLayerDargView!.snp.makeConstraints { make in
             make.center.equalTo(sourceView)
@@ -268,38 +285,78 @@ extension VLETimeLineViewController: VLETimeLineRenderTrackViewDelegate {
 
 extension VLETimeLineViewController: VLETimeLineRenderTrackDragViewDelegate {
 
+    // 🔄 MODIFIED: Added linked segments handling
     func renderTrackDragView(_ dragView: VLETimeLineRenderTrackDragView, targetView: VLETimeLineRenderTrackSegmentView, leftBorderDragWith offsetX: CGFloat, finalWidth: CGFloat) {
-        let scaleViewWidth = stateModel.fetchScaleViewWidth()
-        self.renderTrackView.snp.updateConstraints { make in
-            make.width.equalTo(scaleViewWidth)
-        }
+        
+        // 🆕 NEW: Get adjacent segments for linked handling
+        let adjacentSegments = targetView.model.findAdjacentSegments(in: stateModel.renderTrackItemModelArray)
+        
+        // Update current segment
         targetView.snp.updateConstraints { make in
             make.width.equalTo(finalWidth)
         }
         dragView.snp.updateConstraints { make in
             make.width.equalTo(finalWidth + 24 + 24)
         }
+        
+        // 🆕 NEW: Update adjacent segment if linked
+        if let previousSegment = adjacentSegments.previous,
+           let prevIndex = stateModel.renderTrackItemModelArray.firstIndex(where: { $0 === previousSegment }) {
+            updateSegmentViewWidth(at: prevIndex, newWidth: VLETimeLineConfig.convertToPt(value: previousSegment.source.selectedTimeRange.duration))
+        }
+        
+        let scaleViewWidth = stateModel.fetchScaleViewWidth()
+        self.renderTrackView.snp.updateConstraints { make in
+            make.width.equalTo(scaleViewWidth)
+        }
+        
         stateModel.refreshItemTime()
         reloadScaleView()
     }
 
     func renderTrackDragView(_ dragView: VLETimeLineRenderTrackDragView, targetView: VLETimeLineRenderTrackSegmentView, rightBorderDragWith offsetX: CGFloat, finalWidth: CGFloat) {
-        let scaleViewWidth = stateModel.fetchScaleViewWidth()
-        renderTrackView.snp.updateConstraints { make in
-            make.width.equalTo(scaleViewWidth)
-        }
+        
+        // 🆕 NEW: Get adjacent segments for linked handling
+        let adjacentSegments = targetView.model.findAdjacentSegments(in: stateModel.renderTrackItemModelArray)
+        
+        // Update current segment
         targetView.snp.updateConstraints { make in
             make.width.equalTo(finalWidth)
         }
         dragView.snp.updateConstraints { make in
             make.width.equalTo(finalWidth + 24 + 24)
         }
+        
+        // 🆕 NEW: Update adjacent segment if linked
+        if let nextSegment = adjacentSegments.next,
+           let nextIndex = stateModel.renderTrackItemModelArray.firstIndex(where: { $0 === nextSegment }) {
+            updateSegmentViewWidth(at: nextIndex, newWidth: VLETimeLineConfig.convertToPt(value: nextSegment.source.selectedTimeRange.duration))
+        }
+        
+        let scaleViewWidth = stateModel.fetchScaleViewWidth()
+        renderTrackView.snp.updateConstraints { make in
+            make.width.equalTo(scaleViewWidth)
+        }
+        
         stateModel.refreshItemTime()
         reloadScaleView()
     }
 
     func renderTrackDragViewIsDragEnd() {
         VLEMainConcreteMediator.shared.previewTimeLineItem(videoLab: buildVideolab())
+    }
+    
+    // 🆕 NEW: Helper method to update segment view width
+    private func updateSegmentViewWidth(at index: Int, newWidth: CGFloat) {
+        guard index < renderTrackView.segmentViewArray.count else { return }
+        
+        let segmentView = renderTrackView.segmentViewArray[index]
+        segmentView.snp.updateConstraints { make in
+            make.width.equalTo(newWidth)
+        }
+        
+        // Visual feedback
+        segmentView.highlightAsLinked(isExpanding: true)
     }
 }
 
@@ -578,4 +635,3 @@ extension VLETimeLineViewController {
         return toolBarView
     }
 }
-

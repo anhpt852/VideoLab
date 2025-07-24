@@ -4,6 +4,7 @@
 //
 //  Created by Kay on 2022/9/23.
 //  Copyright © 2022 Chocolate. All rights reserved.
+//  UPDATED: Added linked segments support
 //
 
 import Foundation
@@ -18,6 +19,10 @@ class VLETimeLineStateModel {
     var totalDuration: CMTime = CMTime.zero
     var currentSelectedItemModel: VLETimeLineItemModel?
     var currentSelectedIndex: Int?
+    
+    // 🆕 NEW: Track original sources để quản lý linked segments
+    private var originalSourceTracker: [String: [VLETimeLineItemModel]] = [:]
+    
     var isHaveRenderTrack: Bool {
         if renderTrackItemModelArray.isEmpty && separateRenderTrackItemModelArray.isEmpty{
             return false
@@ -25,8 +30,10 @@ class VLETimeLineStateModel {
             return true
         }
     }
+    
     private var _renderTrackItemModelArray: [VLETimeLineItemModel] = []
     private var _separateRenderTrackItemModelArray: [VLETimeLineItemModel] = []
+    
     public var renderTrackItemModelArray: [VLETimeLineItemModel] {
         get {
             return _renderTrackItemModelArray
@@ -40,6 +47,7 @@ class VLETimeLineStateModel {
             }
         }
     }
+    
     public var separateRenderTrackItemModelArray: [VLETimeLineItemModel] {
         get {
             return _separateRenderTrackItemModelArray
@@ -53,6 +61,7 @@ class VLETimeLineStateModel {
             }
         }
     }
+    
     init() {
         self.renderSize = CGSize.init(width: 1280, height: 720)
     }
@@ -120,28 +129,95 @@ class VLETimeLineStateModel {
         return CMTime.init(value: value, timescale: timescale)
     }
 
-    public func clipRenderTrackItemModelAtCurrentIndex(clipRate rate: Float, completion: @escaping (NSError?) -> Void){
-        guard let itemModel = currentSelectedItemModel else {
+    // 🔄 MODIFIED: Enhanced with linked segments support
+    public func clipRenderTrackItemModelAtCurrentIndex(clipRate rate: Float, completion: @escaping (NSError?) -> Void) {
+        guard let itemModel = currentSelectedItemModel,
+              let currentIndex = currentSelectedIndex else {
+            completion(NSError())
             return
         }
-        let selectedDuration = calculateSelectedTime(at: Float(rate), sourceTime: itemModel.source.selectedTimeRange.duration)
-        let newItemModel = VLETimeLineItemModel.init(with: itemModel.source, type: itemModel.type)
-        newItemModel.isSeparateRenderTrack = false
+        
+        let selectedDuration = calculateSelectedTime(at: rate, sourceTime: itemModel.source.selectedTimeRange.duration)
+        let newItemModel = VLETimeLineItemModel(with: itemModel.source, type: itemModel.type)
         newItemModel.source = itemModel.source.copy()
-        newItemModel.source.load { error in
-            if error == nil {
-                newItemModel.globalStartTime = CMTimeAdd(itemModel.globalStartTime, selectedDuration)
-                newItemModel.source.selectedTimeRange.start = CMTimeAdd(itemModel.source.selectedTimeRange.start, selectedDuration)
-                newItemModel.source.selectedTimeRange.duration = CMTimeSubtract(itemModel.source.selectedTimeRange.duration, selectedDuration)
-                newItemModel.renderLayer.timeRange = CMTimeRange.init(start: newItemModel.globalStartTime, duration: newItemModel.source.selectedTimeRange.duration)
-                itemModel.source.selectedTimeRange.duration = selectedDuration
-                newItemModel.generateThumbnails(with: 1) { _ in}
-                self.renderTrackItemModelArray.insert(newItemModel, at: self.currentSelectedIndex!+1)
-                completion(nil)
-            } else {
-                completion(NSError.init())
+        
+        newItemModel.source.load { [weak self] error in
+            guard let self = self, error == nil else {
+                completion(NSError())
+                return
+            }
+            
+            // 🆕 NEW: Setup linked segment properties
+            newItemModel.originalSourceID = itemModel.originalSourceID
+            newItemModel.segmentIndex = itemModel.segmentIndex + 1
+            newItemModel.originalSourceDuration = itemModel.originalSourceDuration
+            
+            // Calculate split point in original timeline
+            let splitTimeInOriginal = CMTimeAdd(itemModel.originalSourceStartTime, selectedDuration)
+            
+            // Update current segment (A) - phần trước split
+            itemModel.source.selectedTimeRange.duration = selectedDuration
+            // originalSourceStartTime của itemModel giữ nguyên
+            
+            // Setup new segment (B) - phần sau split
+            newItemModel.originalSourceStartTime = splitTimeInOriginal
+            
+            let remainingDuration = CMTimeSubtract(itemModel.source.selectedTimeRange.duration, selectedDuration)
+            newItemModel.source.selectedTimeRange = CMTimeRange(
+                start: CMTimeAdd(itemModel.source.selectedTimeRange.start, selectedDuration),
+                duration: remainingDuration
+            )
+            
+            newItemModel.renderLayer.timeRange = CMTimeRange(
+                start: CMTimeAdd(itemModel.globalStartTime, selectedDuration),
+                duration: remainingDuration
+            )
+            
+            // 🆕 NEW: Update segment indices cho tất cả segments sau
+            self.updateSegmentIndicesAfter(index: itemModel.segmentIndex, sourceID: itemModel.originalSourceID)
+            
+            // 🆕 NEW: Track linked segments
+            if self.originalSourceTracker[itemModel.originalSourceID] == nil {
+                self.originalSourceTracker[itemModel.originalSourceID] = []
+            }
+            self.originalSourceTracker[itemModel.originalSourceID]?.append(newItemModel)
+            
+            newItemModel.generateThumbnails(with: 1) { _ in
+                DispatchQueue.main.async {
+                    self.renderTrackItemModelArray.insert(newItemModel, at: currentIndex + 1)
+                    completion(nil)
+                }
             }
         }
+    }
+    
+    // 🆕 NEW: Helper method để update segment indices
+    private func updateSegmentIndicesAfter(index: Int, sourceID: String) {
+        // Update render track segments
+        for segment in renderTrackItemModelArray {
+            if segment.originalSourceID == sourceID && segment.segmentIndex > index {
+                segment.segmentIndex += 1
+            }
+        }
+        
+        // Update separate track segments
+        for segment in separateRenderTrackItemModelArray {
+            if segment.originalSourceID == sourceID && segment.segmentIndex > index {
+                segment.segmentIndex += 1
+            }
+        }
+    }
+    
+    // 🆕 NEW: Helper methods for linked segments
+    public func getLinkedSegments(for segment: VLETimeLineItemModel) -> [VLETimeLineItemModel] {
+        let allSegments = renderTrackItemModelArray + separateRenderTrackItemModelArray
+        return allSegments.filter { $0.originalSourceID == segment.originalSourceID }
+            .sorted { $0.segmentIndex < $1.segmentIndex }
+    }
+    
+    public func areLinkedSegments(_ segment1: VLETimeLineItemModel, _ segment2: VLETimeLineItemModel) -> Bool {
+        return segment1.originalSourceID == segment2.originalSourceID &&
+               abs(segment1.segmentIndex - segment2.segmentIndex) == 1
     }
 
     public func refreshItemTime() {

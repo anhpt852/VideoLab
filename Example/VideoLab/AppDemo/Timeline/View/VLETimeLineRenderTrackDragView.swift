@@ -4,6 +4,7 @@
 //
 //  Created by Kay on 2022/10/12.
 //  Copyright © 2022 Chocolate. All rights reserved.
+//  UPDATED: Added linked segments support
 //
 
 import Foundation
@@ -26,6 +27,9 @@ class VLETimeLineRenderTrackDragView: UIView {
     var originalGlobalStartTime: CMTime = CMTime.zero
     var originalSelectedStartTime: CMTime = CMTime.zero
     weak var delegate: VLETimeLineRenderTrackDragViewDelegate?
+    
+    // 🆕 NEW: Reference to access linked segments
+    weak var stateModel: VLETimeLineStateModel?
     
     lazy var leftDragBlockView: UIView = {
         let view = UIView.init()
@@ -86,8 +90,10 @@ class VLETimeLineRenderTrackDragView: UIView {
     @objc func middleAreaViewTapGestureAction(sender: UITapGestureRecognizer) {
     }
 
+    // 🔄 MODIFIED: Enhanced with linked segments logic
     @objc func leftDragBlockViewGestureAction(sender: UIPanGestureRecognizer) {
         let point = sender.location(in: self.superview)
+        
         if sender.state == .began {
             panGestureOriginX = point.x
             targetViewW = targetView.bounds.width
@@ -95,11 +101,24 @@ class VLETimeLineRenderTrackDragView: UIView {
             originalSelectedDurtaion = targetView.model.source.selectedTimeRange.duration
             originalGlobalStartTime = targetView.model.globalStartTime
             originalSelectedStartTime = targetView.model.source.selectedTimeRange.start
+            
         } else if sender.state == .changed {
             let offset = point.x - panGestureOriginX
-            if (offset + 10) > targetViewW {
-                return
+            
+            // 🆕 NEW: Try linked segments logic first
+            if let stateModel = stateModel {
+                let adjacentSegments = targetView.model.findAdjacentSegments(in: stateModel.renderTrackItemModelArray)
+                
+                if let success = handleLinkedLeftDrag(offset: offset, adjacentSegments: adjacentSegments), success {
+                    let finalWidth = offset >= 0 ? targetViewW - offset : targetViewW + abs(offset)
+                    self.delegate?.renderTrackDragView(self, targetView: targetView, leftBorderDragWith: offset, finalWidth: finalWidth)
+                    return
+                }
             }
+            
+            // 🔄 FALLBACK: Original logic for non-linked segments
+            if (offset + 10) > targetViewW { return }
+            
             if offset >= 0 {
                 if targetView.model.recomputeSelectedDurationOf(originalDuration: originalSelectedDurtaion, offset: -offset) == false {
                     return
@@ -115,30 +134,75 @@ class VLETimeLineRenderTrackDragView: UIView {
                 targetView.model.recomputeSelectedStartTimeOf(originalTime: originalSelectedStartTime, offset: -abs(offset))
                 self.delegate?.renderTrackDragView(self, targetView: targetView, leftBorderDragWith: offset, finalWidth: targetViewW + abs(offset))
             }
+            
         } else if sender.state == .ended {
             self.delegate?.renderTrackDragViewIsDragEnd()
         }
     }
 
+    // 🔄 MODIFIED: Enhanced with linked segments logic
     @objc func rightDragBlockViewGestureAction(sender: UIPanGestureRecognizer) -> Void {
         let point = sender.location(in: self.superview)
+        
         if sender.state == .began {
             panGestureOriginX = point.x
             targetViewW = targetView.bounds.width
             viewW = self.bounds.width
             originalSelectedDurtaion = targetView.model.source.selectedTimeRange.duration
+            
         } else if sender.state == .changed {
             let offset = point.x - panGestureOriginX
-            if abs(offset) > (targetViewW - 10) {
-                return
+            
+            // 🆕 NEW: Try linked segments logic first
+            if let stateModel = stateModel {
+                let adjacentSegments = targetView.model.findAdjacentSegments(in: stateModel.renderTrackItemModelArray)
+                
+                if let success = handleLinkedRightDrag(offset: offset, adjacentSegments: adjacentSegments), success {
+                    let finalWidth = targetViewW + offset
+                    self.delegate?.renderTrackDragView(self, targetView: targetView, rightBorderDragWith: offset, finalWidth: finalWidth)
+                    return
+                }
             }
+            
+            // 🔄 FALLBACK: Original logic for non-linked segments
+            if abs(offset) > (targetViewW - 10) { return }
+            
             if targetView.model.recomputeSelectedDurationOf(originalDuration: originalSelectedDurtaion, offset: offset) == false {
                 return
             }
             self.delegate?.renderTrackDragView(self, targetView: targetView, rightBorderDragWith: offset, finalWidth: targetViewW + offset)
+            
         } else if sender.state == .ended {
             self.delegate?.renderTrackDragViewIsDragEnd()
         }
+    }
+    
+    // 🆕 NEW: Handle linked segment left drag
+    private func handleLinkedLeftDrag(offset: CGFloat, adjacentSegments: (previous: VLETimeLineItemModel?, next: VLETimeLineItemModel?)) -> Bool? {
+        guard let previousSegment = adjacentSegments.previous,
+              targetView.model.originalSourceID == previousSegment.originalSourceID else {
+            return nil // Not linked, use fallback
+        }
+        
+        return targetView.model.recomputeLinkedDuration(
+            isLeftEdge: true,
+            offset: offset,
+            adjacentSegments: adjacentSegments
+        )
+    }
+    
+    // 🆕 NEW: Handle linked segment right drag
+    private func handleLinkedRightDrag(offset: CGFloat, adjacentSegments: (previous: VLETimeLineItemModel?, next: VLETimeLineItemModel?)) -> Bool? {
+        guard let nextSegment = adjacentSegments.next,
+              targetView.model.originalSourceID == nextSegment.originalSourceID else {
+            return nil // Not linked, use fallback
+        }
+        
+        return targetView.model.recomputeLinkedDuration(
+            isLeftEdge: false,
+            offset: offset,
+            adjacentSegments: adjacentSegments
+        )
     }
 
     func addDragBlockRoundCornerLayer(isLeft: Bool) {
