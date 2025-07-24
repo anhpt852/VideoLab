@@ -23,9 +23,6 @@ class ViewController: UITableViewController {
             navigationController?.pushViewController(controller, animated: true)
         } else if indexPath.row == 1 {
             let controller = VLEMainViewController.init()
-            controller.effectViewController.onPush = { [weak self] subVC in
-                self?.navigationController?.pushViewController(subVC, animated: true)
-            }
             navigationController?.pushViewController(controller, animated: true)
         }
     }

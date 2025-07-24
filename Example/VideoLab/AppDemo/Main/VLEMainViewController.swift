@@ -74,6 +74,5 @@ class VLEMainViewController: UIViewController {
         self.view.addSubview(self.timelineViewController.view)
         self.addChild(self.effectViewController)
         self.view.addSubview(self.effectViewController.view)
-        
     }
 }

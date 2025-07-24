@@ -20,7 +20,6 @@
 		2E97F3B7246839680071AC60 /* LUT_M05.png in Resources */ = {isa = PBXBuildFile; fileRef = 2E97F3AD246839680071AC60 /* LUT_M05.png */; };
 		2E97F3B8246839680071AC60 /* LUT_M08.png in Resources */ = {isa = PBXBuildFile; fileRef = 2E97F3AE246839680071AC60 /* LUT_M08.png */; };
 		2E97F3B9246839680071AC60 /* LUT_M09.png in Resources */ = {isa = PBXBuildFile; fileRef = 2E97F3AF246839680071AC60 /* LUT_M09.png */; };
-		2EB22F5A2DFB6534009D25DE /* CaptureFrameViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EB22F592DFB652C009D25DE /* CaptureFrameViewController.swift */; };
 		2EC322DC24A71DB9005994AE /* VLEPlayerViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EC322DB24A71DB9005994AE /* VLEPlayerViewController.swift */; };
 		2EC47FF72452A31D00D1D335 /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2EC47FF42452A31D00D1D335 /* Images.xcassets */; };
 		2EC480102452A39400D1D335 /* image2.HEIC in Resources */ = {isa = PBXBuildFile; fileRef = 2EC480072452A39400D1D335 /* image2.HEIC */; };
@@ -126,7 +125,6 @@
 		2E97F3AD246839680071AC60 /* LUT_M05.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = LUT_M05.png; sourceTree = "<group>"; };
 		2E97F3AE246839680071AC60 /* LUT_M08.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = LUT_M08.png; sourceTree = "<group>"; };
 		2E97F3AF246839680071AC60 /* LUT_M09.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = LUT_M09.png; sourceTree = "<group>"; };
-		2EB22F592DFB652C009D25DE /* CaptureFrameViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureFrameViewController.swift; sourceTree = "<group>"; };
 		2EC322DB24A71DB9005994AE /* VLEPlayerViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VLEPlayerViewController.swift; sourceTree = "<group>"; };
 		2EC47FF42452A31D00D1D335 /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Images.xcassets; sourceTree = "<group>"; };
 		2EC480072452A39400D1D335 /* image2.HEIC */ = {isa = PBXFileReference; lastKnownFileType = file; path = image2.HEIC; sourceTree = "<group>"; };
@@ -242,7 +240,6 @@
 		0C107FC6284DF8E500629526 /* FeaturesDemo */ = {
 			isa = PBXGroup;
 			children = (
-				2EB22F592DFB652C009D25DE /* CaptureFrameViewController.swift */,
 				607FACD71AFB9204008FA782 /* ViewController.swift */,
 				2EC322DB24A71DB9005994AE /* VLEPlayerViewController.swift */,
 				0C107FCB284DFB7200629526 /* VLEDemoViewController.swift */,
@@ -861,7 +858,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				2EB22F5A2DFB6534009D25DE /* CaptureFrameViewController.swift in Sources */,
 				64F4099928BCA6AE00062EED /* VLENavViewController.swift in Sources */,
 				642A1CA528D0AC7900B1F482 /* VLEPickerAlbumVideoCell.swift in Sources */,
 				642A1CA728D17B9600B1F482 /* VLEPickerFetchAssetManager.swift in Sources */,
@@ -1045,7 +1041,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = M743AAW9KC;
 				INFOPLIST_FILE = VideoLab/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 11.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				MODULE_NAME = ExampleApp;
 				MTL_HEADER_SEARCH_PATHS = "";
@@ -1066,7 +1062,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = M743AAW9KC;
 				INFOPLIST_FILE = VideoLab/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 11.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				MODULE_NAME = ExampleApp;
 				MTL_HEADER_SEARCH_PATHS = "";
@@ -1095,7 +1091,6 @@
 					"$(inherited)",
 				);
 				INFOPLIST_FILE = Tests/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
 				PRODUCT_BUNDLE_IDENTIFIER = com.linkid.online.dev;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1120,7 +1115,6 @@
 					"$(inherited)",
 				);
 				INFOPLIST_FILE = Tests/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
 				PRODUCT_BUNDLE_IDENTIFIER = com.linkid.online.dev;
 				PRODUCT_NAME = "$(TARGET_NAME)";
